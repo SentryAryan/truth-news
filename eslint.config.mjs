@@ -18,6 +18,7 @@ const eslintConfig = defineConfig([
     ".claude/**",
     ".agents/**",
     "graphify-out/**",
+    "public/**",
   ]),
 ]);
 

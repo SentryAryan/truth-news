@@ -58,6 +58,18 @@ export function IconBookmark(props: IconProps) {
   );
 }
 
+export function IconShare(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="18" cy="5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="19" r="2.5" />
+      <path d="m8.5 13.2 7 3.6" />
+      <path d="m15.5 7.2-7 3.6" />
+    </IconBase>
+  );
+}
+
 export function IconClock(props: IconProps) {
   return (
     <IconBase {...props}>

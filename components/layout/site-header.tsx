@@ -1,37 +1,23 @@
 import { Container } from "@/components/container";
-import { IconMenu } from "@/components/icons";
+import { SiteHeaderMenu } from "@/components/layout/site-header-menu";
 import { Logo } from "@/components/logo";
 import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { SITE_NAV } from "@/lib/site-nav";
+import { Show, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-
-const NAV = [
-  { href: "/", label: "Home", active: true, dot: false },
-  { href: "#", label: "For You", active: false, dot: true },
-  { href: "#", label: "Local", active: false, dot: false },
-  { href: "#", label: "Blindspot", active: false, dot: false },
-] as const;
 
 export function SiteHeader() {
   return (
     <header className="border-b border-border bg-bg-primary">
-      <Container className="flex h-14 sm:h-16 items-center justify-between gap-2 sm:gap-3 md:gap-6">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            className="shrink-0 text-text-primary"
-            aria-label="Open menu"
-          >
-            <IconMenu size={20} />
-          </button>
-          <Link href="/" className="min-w-0 no-underline text-inherit">
-            <Logo size="responsive" />
-          </Link>
-        </div>
+      <Container className="flex h-14 sm:h-16 items-center justify-between gap-3 lg:gap-6">
+        <Link href="/" className="min-w-0 no-underline text-inherit">
+          <Logo size="responsive" />
+        </Link>
 
-        <nav className="hidden items-center gap-6 md:flex">
-          {NAV.map((item) => (
+        <nav className="hidden items-center gap-6 lg:flex">
+          {SITE_NAV.map((item) => (
             <Link
               key={item.label}
               href={item.href}
@@ -58,14 +44,22 @@ export function SiteHeader() {
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ThemeSwitcher />
-          <span className="hidden sm:contents">
+          <div className="hidden items-center gap-2 lg:flex">
             <Button variant="primary" size="sm">
               Subscribe
             </Button>
-          </span>
-          <Button variant="secondary" size="sm">
-            Login
-          </Button>
+            <Show when="signed-out">
+              <Link href="/sign-in" className="no-underline">
+                <Button variant="secondary" size="sm">
+                  Login
+                </Button>
+              </Link>
+            </Show>
+            <Show when="signed-in">
+              <UserButton />
+            </Show>
+          </div>
+          <SiteHeaderMenu />
         </div>
       </Container>
     </header>
