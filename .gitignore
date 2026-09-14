@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — ignore all variants; whitelist only the committed sample template
 .env*
+!.env.sample
 
 # vercel
 .vercel
@@ -39,3 +40,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#ECC
+ECC
+
+#Graphify
+graphify-out
+
+#Ide/Agents related files/folders
+.cursor
+.claude
+.agents
+.cursorignore
+.graphifyignore
+skills-lock.json
+node_modules
