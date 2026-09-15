@@ -2,19 +2,15 @@ import { BiasMeter } from "@/components/bias-meter";
 import { Container } from "@/components/container";
 import { AiSummaryCard } from "@/components/details/ai-summary-card";
 import { BiasAnalysisCard } from "@/components/details/bias-analysis-card";
-import { RelatedStoryCard } from "@/components/details/related-story-card";
 import { SourceBreakdownCard } from "@/components/details/source-breakdown-card";
 import {
-    IconBookmark,
-    IconInfo,
-    IconMore,
-    IconShare,
+  IconBookmark,
+  IconInfo,
+  IconMore,
+  IconShare,
 } from "@/components/icons";
 import { NewsletterBanner } from "@/components/newsletter-banner";
-import {
-    getMockDetailArticle,
-    getRelatedStories,
-} from "@/lib/mock-articles";
+import { getArticleWithAnalysis } from "@/lib/supabase/queries/articles";
 import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Image from "next/image";
@@ -35,7 +31,7 @@ export async function generateMetadata({
   }
 
   const { id } = await params;
-  const article = getMockDetailArticle(id);
+  const article = await getArticleWithAnalysis(id);
   if (!article) {
     return { title: "Article not found · truth-news" };
   }
@@ -49,12 +45,10 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
   await auth.protect();
 
   const { id } = await params;
-  const article = getMockDetailArticle(id);
+  const article = await getArticleWithAnalysis(id);
   if (!article) {
     notFound();
   }
-
-  const related = getRelatedStories(article);
 
   return (
     <main className="flex-1 bg-bg-primary">
@@ -65,10 +59,12 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
               <span className="font-medium text-text-primary">
                 {article.category}
               </span>
-              <span className="text-text-secondary">
-                {" "}
-                · {article.location}
-              </span>
+              {article.location ? (
+                <span className="text-text-secondary">
+                  {" "}
+                  · {article.location}
+                </span>
+              ) : null}
             </p>
 
             <h1 className="mt-2 mb-4 text-h2 font-bold leading-tight text-text-primary sm:text-h1">
@@ -119,9 +115,11 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
                   sizes="(max-width: 1024px) 100vw, 66vw"
                 />
               </div>
-              <figcaption className="mt-2 text-caption text-text-secondary">
-                {article.imageCaption}
-              </figcaption>
+              {article.imageCaption ? (
+                <figcaption className="mt-2 text-caption text-text-secondary">
+                  {article.imageCaption}
+                </figcaption>
+              ) : null}
             </figure>
 
             <div className="mb-8 rounded-lg border border-border bg-bg-primary p-4">
@@ -149,19 +147,6 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
                 </p>
               ))}
             </div>
-
-            {related.length > 0 ? (
-              <section className="mt-10 border-t border-border pt-8">
-                <h2 className="mb-5 text-h3 font-semibold text-text-primary">
-                  Related Stories
-                </h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {related.map((story) => (
-                    <RelatedStoryCard key={story.id} story={story} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
           </article>
 
           <aside className="mt-8 space-y-6 lg:mt-0 lg:sticky lg:top-6 lg:self-start">

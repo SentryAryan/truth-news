@@ -1,10 +1,11 @@
 "use client";
 
+import { ThemedUserButton } from "@/components/auth/themed-user-button";
 import { IconMenu } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { SITE_NAV } from "@/lib/site-nav";
-import { Show, UserButton } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -105,7 +106,7 @@ export function SiteHeaderMenu() {
             </Show>
             <Show when="signed-in">
               <div className="flex items-center justify-center py-1">
-                <UserButton />
+                <ThemedUserButton />
               </div>
             </Show>
           </div>

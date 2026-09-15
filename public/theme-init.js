@@ -1,7 +1,7 @@
 /**
- * Blocking FOUC theme bootstrap. Keep key/rules in sync with lib/theme.ts.
- * Loaded via <script src> from the root layout (not next/script — that is a
- * Client Component and triggers React 19's "script tag while rendering" error).
+ * Blocking FOUC theme bootstrap (standalone copy for reference / CDN).
+ * The live app inlines this via lib/theme-bootstrap-script.ts in app/layout.tsx
+ * — React 19 does not execute external <script src> from components.
  */
 (function () {
   try {

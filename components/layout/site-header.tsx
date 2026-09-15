@@ -1,3 +1,4 @@
+import { ThemedUserButton } from "@/components/auth/themed-user-button";
 import { Container } from "@/components/container";
 import { SiteHeaderMenu } from "@/components/layout/site-header-menu";
 import { Logo } from "@/components/logo";
@@ -5,7 +6,7 @@ import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { SITE_NAV } from "@/lib/site-nav";
-import { Show, UserButton } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import Link from "next/link";
 
 export function SiteHeader() {
@@ -56,7 +57,7 @@ export function SiteHeader() {
               </Link>
             </Show>
             <Show when="signed-in">
-              <UserButton />
+              <ThemedUserButton />
             </Show>
           </div>
           <SiteHeaderMenu />
