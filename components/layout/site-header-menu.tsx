@@ -1,15 +1,20 @@
 "use client";
 
-import { ThemedUserButton } from "@/components/auth/themed-user-button";
+import { HeaderAuthSlot } from "@/components/auth/header-auth-slot";
 import { IconMenu } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { SITE_NAV } from "@/lib/site-nav";
-import { Show } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
-export function SiteHeaderMenu() {
+type SiteHeaderMenuProps = {
+  initialSignedIn?: boolean;
+};
+
+export function SiteHeaderMenu({
+  initialSignedIn = false,
+}: SiteHeaderMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -93,22 +98,12 @@ export function SiteHeaderMenu() {
             <Button variant="primary" size="sm" className="w-full">
               Subscribe
             </Button>
-            <Show when="signed-out">
-              <Link
-                href="/sign-in"
-                className="no-underline"
-                onClick={() => setOpen(false)}
-              >
-                <Button variant="secondary" size="sm" className="w-full">
-                  Login
-                </Button>
-              </Link>
-            </Show>
-            <Show when="signed-in">
-              <div className="flex items-center justify-center py-1">
-                <ThemedUserButton />
-              </div>
-            </Show>
+            <HeaderAuthSlot
+              initialSignedIn={initialSignedIn}
+              fullWidth
+              className="py-1"
+              onNavigate={() => setOpen(false)}
+            />
           </div>
         </div>
       ) : null}

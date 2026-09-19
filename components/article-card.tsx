@@ -1,8 +1,13 @@
 import { BiasMeter } from "@/components/bias-meter";
 import { IconBookmark, IconClock, IconInfo } from "@/components/icons";
+import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/cn";
 import type { ArticleCardProps } from "@/lib/types/article-display";
 import Image from "next/image";
+
+function formatLabel(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 export function ArticleCard({
   title,
@@ -17,7 +22,31 @@ export function ArticleCard({
   readTime,
   sourceCount,
   href,
+  sentimentLabel,
+  framingLabel,
+  confidence,
 }: ArticleCardProps) {
+  const metaChips =
+    sentimentLabel || framingLabel || typeof confidence === "number" ? (
+      <div className="flex flex-wrap gap-1.5">
+        {sentimentLabel ? (
+          <Chip className="px-2 py-0.5 text-caption">
+            {formatLabel(sentimentLabel)}
+          </Chip>
+        ) : null}
+        {framingLabel ? (
+          <Chip className="px-2 py-0.5 text-caption">
+            AI: {formatLabel(framingLabel)}
+          </Chip>
+        ) : null}
+        {typeof confidence === "number" ? (
+          <Chip className="px-2 py-0.5 text-caption">
+            {Math.round(confidence * 100)}% conf.
+          </Chip>
+        ) : null}
+      </div>
+    ) : null;
+
   const content =
     variant === "feed" ? (
       <article
@@ -45,13 +74,19 @@ export function ArticleCard({
         <div className="flex flex-1 flex-col gap-2.5 p-3 sm:gap-3 sm:p-4">
           <p className="text-caption text-text-secondary">
             <span className="font-medium text-text-primary">{category}</span>
-            <span aria-hidden="true"> · </span>
-            <span>{location}</span>
+            {location ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>{location}</span>
+              </>
+            ) : null}
           </p>
 
           <h3 className="text-body-md sm:text-body-lg font-semibold leading-snug text-text-primary">
             {title}
           </h3>
+
+          {metaChips}
 
           <BiasMeter
             left={bias.left}
@@ -87,8 +122,12 @@ export function ArticleCard({
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p className="text-caption text-text-secondary">
             <span className="text-text-primary">{category}</span>
-            <span aria-hidden="true"> · </span>
-            <span>{location}</span>
+            {location ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>{location}</span>
+              </>
+            ) : null}
           </p>
 
           <h3 className="text-h3 font-semibold text-text-primary">{title}</h3>
@@ -98,6 +137,8 @@ export function ArticleCard({
               {snippet}
             </p>
           ) : null}
+
+          {metaChips}
 
           <BiasMeter
             left={bias.left}

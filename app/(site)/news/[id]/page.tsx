@@ -4,10 +4,10 @@ import { AiSummaryCard } from "@/components/details/ai-summary-card";
 import { BiasAnalysisCard } from "@/components/details/bias-analysis-card";
 import { SourceBreakdownCard } from "@/components/details/source-breakdown-card";
 import {
-  IconBookmark,
-  IconInfo,
-  IconMore,
-  IconShare,
+    IconBookmark,
+    IconInfo,
+    IconMore,
+    IconShare,
 } from "@/components/icons";
 import { NewsletterBanner } from "@/components/newsletter-banner";
 import { getArticleWithAnalysis } from "@/lib/supabase/queries/articles";
@@ -155,11 +155,16 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
               percent={article.overallBiasPercent}
               sources={article.sources}
               bias={article.bias}
+              sentimentLabel={article.sentimentLabel}
+              confidence={article.confidence}
             />
             <AiSummaryCard
               summaryDate={article.summaryDate}
               summaryReadTime={article.summaryReadTime}
               summary={article.summary}
+              disclaimer={article.disclaimer}
+              framingNotes={article.framingNotes}
+              loadedTerms={article.loadedTerms}
             />
             <SourceBreakdownCard
               sources={article.sources}

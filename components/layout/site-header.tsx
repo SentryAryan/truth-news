@@ -1,4 +1,4 @@
-import { ThemedUserButton } from "@/components/auth/themed-user-button";
+import { HeaderAuthSlot } from "@/components/auth/header-auth-slot";
 import { Container } from "@/components/container";
 import { SiteHeaderMenu } from "@/components/layout/site-header-menu";
 import { Logo } from "@/components/logo";
@@ -6,10 +6,13 @@ import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { SITE_NAV } from "@/lib/site-nav";
-import { Show } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const { isAuthenticated } = await auth();
+  const initialSignedIn = Boolean(isAuthenticated);
+
   return (
     <header className="border-b border-border bg-bg-primary">
       <Container className="flex h-14 sm:h-16 items-center justify-between gap-3 lg:gap-6">
@@ -49,18 +52,9 @@ export function SiteHeader() {
             <Button variant="primary" size="sm">
               Subscribe
             </Button>
-            <Show when="signed-out">
-              <Link href="/sign-in" className="no-underline">
-                <Button variant="secondary" size="sm">
-                  Login
-                </Button>
-              </Link>
-            </Show>
-            <Show when="signed-in">
-              <ThemedUserButton />
-            </Show>
+            <HeaderAuthSlot initialSignedIn={initialSignedIn} />
           </div>
-          <SiteHeaderMenu />
+          <SiteHeaderMenu initialSignedIn={initialSignedIn} />
         </div>
       </Container>
     </header>

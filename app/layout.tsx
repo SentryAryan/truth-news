@@ -1,8 +1,8 @@
 import { ClerkThemeProvider } from "@/components/theme/clerk-theme-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme-bootstrap-script";
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -36,13 +36,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${poppins.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        {/* Inline bootstrap — React 19 ignores external <script src> in components */}
-        <script
-          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
-        />
-      </head>
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
+        {/* beforeInteractive avoids React 19 raw <script> warnings and still runs pre-hydration */}
+        <Script src="/theme-init.js" strategy="beforeInteractive" />
         <ThemeProvider>
           <ClerkThemeProvider>{children}</ClerkThemeProvider>
         </ThemeProvider>

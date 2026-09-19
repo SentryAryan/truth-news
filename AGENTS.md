@@ -45,8 +45,8 @@ For every implementation request:
 3. Read clearly needed supporting skills from the approved skill list.
 4. Inspect relevant code.
 5. Ask a focused question only if the task has meaningful ambiguity.
-6. Create a detailed prompt file in `prompts/`.
-7. Ask: `I prepared the implementation prompt at prompts/<file-name>.md. Is this good to execute?`
+6. Create a detailed prompt file in `docs/prompts/` only (never create another `prompts/` folder elsewhere).
+7. Ask: `I prepared the implementation prompt at docs/prompts/<file-name>.md. Is this good to execute?`
 8. Implement only after user approval.
 9. Run available checks.
 10. Share exact steps to test or run the completed feature.
@@ -70,7 +70,7 @@ Use them for:
 - `clerk`: authentication and protected routes
 - `supabase`: schema, migrations, queries, service role usage, dedupe, logs, pgvector
 - `oxylabs-web-scraper`: Oxylabs Web Scraper API, Scheduler, scheduled jobs, scraping behavior
-- `ai-sdk`: Vercel AI SDK and OpenAI provider usage, model calls, AI analysis output handling
+- `ai-sdk`: Vercel AI SDK with OpenRouter (OpenAI-compatible provider), model calls, AI analysis output handling
 
 Do not invent new skills.
 
@@ -80,12 +80,15 @@ For Cheerio, Zod, Tailwind, and shadcn/ui, use existing project patterns, packag
 
 # 4. Prompt files
 
-Prompt files live in the `prompts/` directory. Use names like:
+All implementation prompts live only in `docs/prompts/`. Do not create a root
+`prompts/` folder, or any other `prompts/` directory anywhere else in the repo.
 
-- `prompts/oxylabs-scraping.md`
-- `prompts/oxylabs-scheduler.md`
-- `prompts/ai-analysis.md`
-- `prompts/news-details-page-ui.md`
+Use names like:
+
+- `docs/prompts/oxylabs-scraping.md`
+- `docs/prompts/oxylabs-scheduler.md`
+- `docs/prompts/ai-analysis.md`
+- `docs/prompts/news-details-page-ui.md`
 
 Each prompt must include:
 
@@ -134,7 +137,7 @@ Use:
 - Oxylabs Scheduler
 - Cheerio
 - Vercel AI SDK
-- OpenAI provider
+- OpenRouter (OpenAI-compatible API; analysis model always `openrouter/free`)
 - Zod
 - Tailwind CSS
 - shadcn/ui
@@ -561,7 +564,7 @@ Each analysis must include and save to `article_analyses`:
 - disclaimer â†’ `disclaimer`
 - model name â†’ `model`
 
-Embedding generation is added in section 20 after pgvector is enabled.
+Embedding generation is deferred to section 20 (pgvector). Analysis LLM calls always use OpenRouter model `openrouter/free` via the Vercel AI SDK OpenAI-compatible client (`OPENROUTER_API_KEY`).
 
 Political framing must be shown as **AI-estimated**, not objective truth.
 
@@ -609,7 +612,7 @@ This section is implemented after AI analysis is working (section 19). pgvector 
 
 Enable pgvector in Supabase Dashboard under Database Extensions. Then add an `embedding vector(1536)` column to `article_analyses` and create an IVFFlat cosine index on it via the SQL Editor. Update `supabase/schema.sql`, `lib/supabase/types.ts`, and run the ALTER SQL before testing.
 
-Update the `/api/analyze` route to also call OpenAI text-embedding-3-small for each article alongside the existing analysis call and save the result to `article_analyses.embedding`. Update `analyzed_at` only after both analysis and embedding are saved. Because pending detection uses LEFT JOIN logic (see section 19), articles whose `article_analyses` row exists but has `embedding IS NULL` will automatically be picked up for embedding backfill on the next run without re-running the full analysis.
+Update the `/api/analyze` route to also generate embeddings via OpenRouter using an **embedding-capable model id** (not `openrouter/free`, which is a chat free-models router). Save the result to `article_analyses.embedding`. Update `analyzed_at` only after both analysis and embedding are saved. Because pending detection uses LEFT JOIN logic (see section 19), articles whose `article_analyses` row exists but has `embedding IS NULL` will automatically be picked up for embedding backfill on the next run without re-running the full analysis.
 
 To find related articles, query `article_analyses` joined to `articles` and `sources`, filter to rows where the embedding is not null and the article is analyzed and is not the current article, then order by cosine distance (`<=>`) to the current article's embedding and limit to 5 results.
 
@@ -625,13 +628,13 @@ Never expose to browser code:
 
 - Supabase service role key
 - Oxylabs credentials
-- OpenAI credentials
+- OpenRouter credentials
 - scheduler/admin secrets
 
 Never run from browser code:
 
 - Oxylabs calls
-- OpenAI/model calls
+- OpenRouter / model calls
 - scraping
 - analysis
 - scheduler processing
@@ -649,9 +652,10 @@ Canonical list lives in `.env.example`. Only `NEXT_PUBLIC_*` values may reach br
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`                                               | Supabase anon key                                                                       | client + server |
 | `SUPABASE_SERVICE_ROLE_KEY`                                                   | Service-role DB access for writes and pipeline reads                                    | server only     |
 | `OXY_WSA_USERNAME` / `OXY_WSA_PASSWORD`                                       | Oxylabs Web Scraper API + Scheduler auth                                                | server only     |
-| `OPENAI_API_KEY`                                                              | AI analysis and `text-embedding-3-small`                                                | server only     |
+| `OPENROUTER_API_KEY`                                                          | OpenRouter API key for analysis (`openrouter/free`)                                     | server only     |
 | `BIASLY_ADMIN_SECRET`                                                         | Shared secret for `x-biasly-admin-secret` on action routes (section 15)                 | server only     |
 | `ANALYSIS_BATCH_SIZE`                                                         | Optional; articles analyzed per batch (default 5)                                       | server only     |
+| `ANALYSIS_MAX_PER_RUN`                                                        | Optional; max pending articles per `POST /api/analyze` run (default 20)                 | server only     |
 | `CRON_SECRET`                                                                 | Protects `GET /api/cron/pipeline`; injected by Vercel, not in `.env.local` (section 18) | server only     |
 
 Keep this table and `.env.example` in sync when variables change.
@@ -705,14 +709,24 @@ After implementation, run `typecheck` and `lint` at minimum. Add `build` when ro
 - Prefer hand-rolled Tailwind primitives over inventing parallel UI kits; reuse existing components (`Button`, `Chip`, `BiasMeter`, `Logo`, `Container`, `ThemeSwitcher`, `ArticleCard`) and semantic tokens so light/dark stay aligned.
 - Theme control should be an industry-style light / dark / system dropdown with icons; place it in the site header left of Subscribe and Login, not in the uppermost top strip.
 - Site chrome such as the date/location top strip must remain readable in dark mode; avoid low-contrast dark-on-dark treatments.
-- On small screens, prefer industry-standard responsive tightening (type, spacing, stacking) when the home page feels cluttered.
-- When executing an attached plan, do not edit the plan file; use the existing todos and mark them in progress rather than recreating them.
+- On small screens, prefer industry-standard responsive tightening (type, spacing, stacking) when the home page feels cluttered; on tablet and below, collapse the site header nav into a hamburger menu when items clutter.
+- When executing an attached plan, do not edit the plan file; use the existing todos and mark them as in progress rather than recreating them.
+- Clerk components (UserButton, profile card, and other auth UI) must follow the app light/dark theme, not Clerk's default appearance alone.
+- Prefer header auth-slot UX that avoids an empty flash while Clerk hydrates (skeleton/placeholder) so the profile control does not appear long after article content.
+- Implementation prompts always go in `docs/prompts/` only; never create another `prompts/` folder elsewhere in the repo.
+- On Windows, share local API test commands with `curl.exe` (not PowerShell's `curl` alias / `Invoke-WebRequest`) so `-H` headers work as documented.
 
 ## Learned Workspace Facts
 
 - The product brand in-app is truth-news; this repo is the truth-news news-analysis site built with Next.js and Tailwind v4.
+- The canonical prompts directory is `docs/prompts/` (section 4). No other `prompts/` folder should exist in the project.
 - Design tokens live as semantic CSS variables in `app/globals.css` on `:root` and `.dark`, exposed through Tailwind `@theme` utilities.
 - Theme runtime uses `lib/theme.ts`, `ThemeProvider`, FOUC `ThemeScript`, and localStorage key `truth-news-theme` with modes `light` | `dark` | `system`.
 - Dark tokens are derived to mirror light semantic roles while keeping Left/Right bias identity; the `/design-system` route is the dedicated token/primitives/theme showcase.
 - Homepage and chrome live under `app/(site)/` with shared layout pieces in `components/layout/` (`TopBar`, `SiteHeader`, `SiteFooter`).
-- UI implementation prompts and mockups are stored under `docs/prompts/` and `docs/prompt-imgs/` (for example `004-home-page-ui.md`, `02-homepage.png`).
+- UI and feature implementation prompts live under `docs/prompts/`; mockups under `docs/prompt-imgs/` (for example `004-home-page-ui.md`, `02-homepage.png`, `03-news-details-page.png`).
+- Auth model: the news feed/home is public; news details (`/news/[id]`) are gated behind Clerk sign-in.
+- Brand marks for light/dark chrome live under `public/icons/project/` (`truth-news-favicon-black.png` for light mode, `truth-news-favicon-white.png` for dark mode).
+- AI analysis uses Vercel AI SDK via OpenRouter (`OPENROUTER_API_KEY`); the analysis model is always `openrouter/free`. Embeddings (§20) require a separate embedding-capable model id, not the free chat router.
+- `ANALYSIS_BATCH_SIZE` is the per-batch chunk size; `ANALYSIS_MAX_PER_RUN` caps how many pending articles a single `POST /api/analyze` run processes (retries on parse failure still add extra OpenRouter calls within that run).
+- Scraped article image CDNs must be allowlisted in `next.config` `images.remotePatterns`; missing hosts (e.g. BBC `ichef.bbci.co.uk`) cause homepage `next/image` 500s.

@@ -1,7 +1,7 @@
 /**
- * Blocking FOUC theme bootstrap (standalone copy for reference / CDN).
- * The live app inlines this via lib/theme-bootstrap-script.ts in app/layout.tsx
- * — React 19 does not execute external <script src> from components.
+ * Blocking FOUC theme bootstrap.
+ * Loaded from app/layout.tsx via next/script strategy="beforeInteractive".
+ * Keep behavior in sync with lib/theme.ts and lib/theme-bootstrap-script.ts.
  */
 (function () {
   try {

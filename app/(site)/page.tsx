@@ -38,6 +38,9 @@ export default async function HomePage() {
                 imageAlt={article.imageAlt}
                 bias={article.bias}
                 sourceCount={article.sourceCount}
+                sentimentLabel={article.sentimentLabel}
+                framingLabel={article.framingLabel}
+                confidence={article.confidence}
                 href={`/news/${article.id}`}
               />
             ))}

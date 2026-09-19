@@ -6,6 +6,8 @@ export type BiasPercentages = {
 
 export type ArticleCardVariant = "feed" | "inline";
 
+export type OverallBiasLabel = "left" | "center" | "right" | "mixed" | "unclear";
+
 export type HomeArticle = {
   id: string;
   title: string;
@@ -15,6 +17,9 @@ export type HomeArticle = {
   imageAlt?: string;
   bias: BiasPercentages;
   sourceCount: number;
+  sentimentLabel?: "positive" | "neutral" | "negative";
+  framingLabel?: OverallBiasLabel;
+  confidence?: number;
 };
 
 export type ArticleCardProps = {
@@ -30,6 +35,9 @@ export type ArticleCardProps = {
   readTime?: string;
   sourceCount?: number;
   href?: string;
+  sentimentLabel?: "positive" | "neutral" | "negative";
+  framingLabel?: OverallBiasLabel;
+  confidence?: number;
 };
 
 export type SourceBias = "left" | "center" | "right";
@@ -48,8 +56,6 @@ export type RelatedStory = {
   publishedDate: string;
   readTime: string;
 };
-
-export type OverallBiasLabel = "left" | "center" | "right" | "mixed" | "unclear";
 
 export type DetailArticle = {
   id: string;
@@ -71,4 +77,9 @@ export type DetailArticle = {
   summaryReadTime: string;
   sourceList: SourceEntry[];
   relatedIds: string[];
+  sentimentLabel: "positive" | "neutral" | "negative";
+  confidence: number;
+  framingNotes: string[];
+  loadedTerms: string[];
+  disclaimer: string;
 };

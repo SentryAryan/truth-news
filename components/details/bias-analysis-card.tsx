@@ -12,6 +12,8 @@ type BiasAnalysisCardProps = {
   percent: number;
   sources: number;
   bias: BiasPercentages;
+  sentimentLabel?: "positive" | "neutral" | "negative";
+  confidence?: number;
 };
 
 function labelColor(label: OverallBiasLabel): string {
@@ -32,8 +34,8 @@ function labelColor(label: OverallBiasLabel): string {
   }
 }
 
-function formatLabel(label: OverallBiasLabel): string {
-  return label.charAt(0).toUpperCase() + label.slice(1);
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function BiasAnalysisCard({
@@ -41,6 +43,8 @@ export function BiasAnalysisCard({
   percent,
   sources,
   bias,
+  sentimentLabel,
+  confidence,
 }: BiasAnalysisCardProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-bg-primary p-4 sm:p-5">
@@ -52,12 +56,18 @@ export function BiasAnalysisCard({
       </div>
 
       <div>
-        <p className="text-body-sm text-text-secondary">Overall Bias</p>
+        <p className="text-body-sm text-text-secondary">
+          Overall bias (AI-estimated)
+        </p>
         <p className={cn("mt-1 text-h2 font-bold", labelColor(label))}>
-          {formatLabel(label)} {percent}%
+          {capitalize(label)} {percent}%
         </p>
         <p className="mt-1 text-caption text-text-secondary">
           Based on {sources} balanced sources.
+          {sentimentLabel ? ` · Sentiment: ${capitalize(sentimentLabel)}` : null}
+          {typeof confidence === "number"
+            ? ` · Confidence: ${Math.round(confidence * 100)}%`
+            : null}
         </p>
       </div>
 

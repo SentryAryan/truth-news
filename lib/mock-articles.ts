@@ -234,6 +234,12 @@ function stubDetailFromHome(
     summaryReadTime: "2 min read",
     sourceList: stubSources(article.sourceCount),
     relatedIds,
+    sentimentLabel: article.sentimentLabel ?? "neutral",
+    confidence: article.confidence ?? 0.5,
+    framingNotes: ["Mock framing note for UI development."],
+    loadedTerms: [],
+    disclaimer:
+      "AI estimates may not reflect actual editorial intent. Mock data only.",
   };
 }
 
@@ -264,6 +270,14 @@ const PRIMARY_DETAIL: DetailArticle = {
   summaryReadTime: "3 min read",
   sourceList: PRIMARY_SOURCES,
   relatedIds: relatedIdsFor("1", 6),
+  sentimentLabel: "neutral",
+  confidence: 0.72,
+  framingNotes: [
+    "Coverage emphasizes negotiation leverage and national security stakes.",
+  ],
+  loadedTerms: ["tougher terms", "peace proposal"],
+  disclaimer:
+    "Framing estimates are AI-assisted and based on article text — not an objective verdict.",
 };
 
 function buildDetailMap(): Record<string, DetailArticle> {

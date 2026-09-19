@@ -126,6 +126,9 @@ function mapToHomeArticle(row: JoinedArticleRow): HomeArticle | null {
       right: analysis.right_percentage,
     },
     sourceCount: 1,
+    sentimentLabel: analysis.sentiment_label,
+    framingLabel: toOverallBiasLabel(analysis.bias_label),
+    confidence: analysis.confidence,
   };
 }
 
@@ -165,6 +168,11 @@ function mapToDetailArticle(row: JoinedArticleRow): DetailArticle | null {
       },
     ],
     relatedIds: [],
+    sentimentLabel: analysis.sentiment_label,
+    confidence: analysis.confidence,
+    framingNotes: analysis.framing_notes ?? [],
+    loadedTerms: analysis.loaded_terms ?? [],
+    disclaimer: analysis.disclaimer,
   };
 }
 
@@ -263,7 +271,7 @@ export async function insertArticles(
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("articles")
-    .insert(rows)
+    .upsert(rows, { onConflict: "original_url", ignoreDuplicates: true })
     .select("*");
 
   if (error) {
@@ -288,28 +296,60 @@ export async function setArticleAnalyzedAt(
   }
 }
 
+/**
+ * Return articles with no article_analyses row, oldest scraped_at first.
+ * Scans in pages so newer pending rows are not skipped when older rows
+ * already have analyses (unlike a single small LIMIT window).
+ */
 export async function getPendingAnalysisArticles(
   limit: number = 20,
 ): Promise<ArticleWithAnalysis[]> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("articles")
-    .select("*, sources(*), article_analyses(*)")
-    .order("scraped_at", { ascending: true })
-    .limit(Math.max(limit * 3, limit));
-
-  if (error) {
-    throw new Error(`getPendingAnalysisArticles failed: ${error.message}`);
+  if (limit <= 0) {
+    return [];
   }
 
-  const pending = (data as JoinedArticleRow[] | null ?? [])
-    .filter((row) => asSingleAnalysis(row.article_analyses) === null)
-    .slice(0, limit)
-    .map((row) => ({
-      ...row,
-      sources: asSingleSource(row.sources),
-      article_analyses: null,
-    }));
+  const supabase = createServiceRoleClient();
+  const pending: ArticleWithAnalysis[] = [];
+  const pageSize = Math.max(limit * 2, 50);
+  const maxScan = Math.max(limit * 20, 500);
+  let offset = 0;
+
+  while (pending.length < limit && offset < maxScan) {
+    const end = offset + pageSize - 1;
+    const { data, error } = await supabase
+      .from("articles")
+      .select("*, sources(*), article_analyses(*)")
+      .order("scraped_at", { ascending: true })
+      .range(offset, end);
+
+    if (error) {
+      throw new Error(`getPendingAnalysisArticles failed: ${error.message}`);
+    }
+
+    const rows = (data as JoinedArticleRow[] | null) ?? [];
+    if (rows.length === 0) {
+      break;
+    }
+
+    for (const row of rows) {
+      if (asSingleAnalysis(row.article_analyses) !== null) {
+        continue;
+      }
+      pending.push({
+        ...row,
+        sources: asSingleSource(row.sources),
+        article_analyses: null,
+      });
+      if (pending.length >= limit) {
+        break;
+      }
+    }
+
+    offset += pageSize;
+    if (rows.length < pageSize) {
+      break;
+    }
+  }
 
   return pending;
 }
