@@ -1,16 +1,34 @@
+"use client";
+
 import type { RelatedStory } from "@/lib/types/article-display";
 import Image from "next/image";
-import Link from "next/link";
+
+import { useNewsDetailNav } from "@/components/details/news-detail-shell";
+import posthog from "posthog-js";
 
 type RelatedStoryCardProps = {
   story: RelatedStory;
 };
 
 export function RelatedStoryCard({ story }: RelatedStoryCardProps) {
+  const { push } = useNewsDetailNav();
+
   return (
-    <Link
-      href={`/news/${story.id}`}
-      className="flex gap-3 rounded-lg border border-border bg-bg-primary p-3 no-underline text-inherit transition-shadow hover:shadow-sm"
+    <button
+      type="button"
+      onClick={() => {
+        if (
+          process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN &&
+          process.env.NEXT_PUBLIC_POSTHOG_HOST
+        ) {
+          posthog.capture("related_story_opened", {
+            story_id: story.id,
+            category: story.category,
+          });
+        }
+        push(`/news/${story.id}`);
+      }}
+      className="flex w-full gap-3 rounded-lg border border-border bg-bg-primary p-3 text-left text-inherit transition-shadow hover:shadow-sm"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-surface">
         <Image
@@ -36,6 +54,6 @@ export function RelatedStoryCard({ story }: RelatedStoryCardProps) {
           {story.readTime}
         </p>
       </div>
-    </Link>
+    </button>
   );
 }

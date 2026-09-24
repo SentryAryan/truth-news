@@ -2,7 +2,7 @@
 
 ## Goal
 
-Enable pgvector in Supabase, add an `embedding vector(1536)` column to `article_analyses`,
+Enable pgvector in Supabase, add an `embedding vector(2048)` column to `article_analyses`,
 update the AI analysis pipeline to generate and save embeddings alongside each analysis,
 add a `getRelatedArticles` query using cosine similarity, and wire up a Related Articles
 section on the news details page.
@@ -13,8 +13,9 @@ This implements section 20 of AGENTS.md.
 
 ## Skills read
 
-- `.agents/skills/supabase/SKILL.md` — schema changes, RPC functions, service role queries
-- `.agents/skills/next-best-practices/SKILL.md` — async RSC patterns, server/client boundaries
+- `.agents/skills/supabase` — schema changes, RPC functions, service role queries
+- `.agents/skills/ai-sdk` — Vercel AI SDK `embed()`, OpenRouter OpenAI-compatible client
+- `node_modules/next/dist/docs/` — async RSC patterns, server/client boundaries
 
 ---
 
@@ -22,30 +23,31 @@ This implements section 20 of AGENTS.md.
 
 | File | Relevant detail |
 |------|-----------------|
-| `supabase/schema.sql` | Current schema — no `vector` extension, no `embedding` column |
-| `lib/supabase/types.ts` | `article_analyses` Row/Insert has no `embedding` field |
-| `lib/ai/analyze.ts` | `analyzeArticle()` calls `gpt-4o-mini` via Vercel AI SDK generateObject |
-| `lib/ai/pipeline.ts` | `runAnalysisPipeline()` calls `analyzeArticle`, inserts row, sets `analyzed_at` |
-| `app/api/analyze/route.ts` | Thin POST route wrapping `runAnalysisPipeline` |
-| `lib/supabase/queries/articles.ts` | `getArticleById` returns `DetailArticle` with `relatedIds: []` always |
-| `app/news/[id]/page.tsx` | `related: RelatedStory[]` is always `[]` — section renders only when non-empty |
-| `components/details/related-story-card.tsx` | Already built, accepts `RelatedStory` |
-| `lib/types.ts` | `RelatedStory` type: `{ id, category, location, title, imageUrl, publishedDate, readTime }` |
-| `package.json` | `ai@^6.0.206`, `@ai-sdk/openai@^3.0.71` — Vercel AI SDK with `embed()` available |
+| `supabase/schema.sql` | No `vector` extension, no `embedding` column (deferred from §7) |
+| `lib/supabase/types.ts` | `ArticleAnalysisRow` / Insert have no `embedding` field |
+| `lib/pipeline/analyze-article.ts` | LLM analysis via OpenRouter `openrouter/free` |
+| `lib/pipeline/analyze.ts` | `runAnalysis()` upserts analysis then sets `analyzed_at` |
+| `app/api/analyze/route.ts` | Thin POST wrapping `runAnalysis` |
+| `lib/supabase/queries/articles.ts` | `getPendingAnalysisArticles` (missing analysis row only); `getArticleWithAnalysis` |
+| `app/(site)/news/[id]/page.tsx` | Live detail page; no Related Articles section yet |
+| `components/details/related-story-card.tsx` | Built; accepts `RelatedStory` |
+| `lib/types/article-display.ts` | `RelatedStory` type |
+| `lib/ai/openrouter.ts` | Shared OpenRouter client; analysis model `openrouter/free` |
+| `package.json` | `ai`, `@ai-sdk/openai` — `embed()` available |
 
 ---
 
 ## Decisions / assumptions
 
-1. **Embedding model**: `text-embedding-3-small` (1536 dimensions) via Vercel AI SDK `embed()`.
-2. **Text to embed**: `article.title + "\n\n" + article.raw_text.slice(0, 8000)` — keeps token cost low while capturing meaning.
-3. **RPC function**: Cosine distance `<=>` is not supported by the supabase-js query builder. A Postgres function `match_related_articles` is created and called via `supabase.rpc()`.
-4. **Embedding fetch in page**: A lightweight `getArticleEmbedding(id)` query is added alongside `getArticleById`. Both are called in parallel in the page with `Promise.all`.
-5. **IVFFlat index**: Created with `lists = 100`. If the table has fewer than 100 rows when the index is created, Postgres will warn but still create it — this is fine for development.
-6. **Existing analyses without embeddings**: `runAnalysisPipeline` will skip articles that already have `analyzed_at` set. Articles analysed before this change have no embedding. A separate backfill pass is outside scope here — the user can call `POST /api/analyze` to re-run only pending articles, or a one-time backfill script can be added later.
-7. **`analyzed_at` update**: Only after both analysis insert AND embedding update succeed.
-8. **Error handling for embedding**: If embedding generation fails, the analysis row is still saved (without embedding) and `analyzed_at` is still set. A warning is logged. Embeddings can be backfilled separately.
-9. **Supabase RPC return type**: `match_related_articles` returns `id`, `title`, `image_url`, `published_at`, `source_name`. The query layer maps these to `RelatedStory`.
+1. **Embedding model**: `nvidia/nemotron-3-embed-1b:free` (2048 dims) via OpenRouter + Vercel AI SDK `embed()`. Not `openrouter/free` (chat router). Optional override: `EMBEDDING_MODEL_ID`. See also `docs/prompts/012-free-nemotron-embeddings.md`.
+2. **Text to embed**: `article.title + "\n\n" + article.raw_text.slice(0, 8000)`.
+3. **RPC**: Cosine distance `<=>` via Postgres function `match_related_articles`, called with `supabase.rpc()`.
+4. **Page fetch**: `getArticleWithAnalysis` + `getArticleEmbedding` in parallel; then `getRelatedArticles` if embedding exists.
+5. **Index**: No IVFFlat/HNSW — pgvector ANN max is 2000 dims; Nemotron is 2048. Exact `<=>` ordering is used.
+6. **Pending / backfill**: An article is pending when there is **no** `article_analyses` row **or** `embedding IS NULL`. If analysis exists, skip LLM and only embed.
+7. **`analyzed_at`**: Set only after both analysis and embedding are saved.
+8. **Embedding failure**: Count as failed for that article; do not set `analyzed_at`. Analysis row may remain for embedding backfill on the next run.
+9. **RelatedStory mapping**: `category` ← `source_name`, `location` ← `""`, `readTime` ← estimated from body when available else `""`.
 
 ---
 
@@ -55,20 +57,16 @@ This implements section 20 of AGENTS.md.
 -- 1. Enable pgvector extension
 create extension if not exists vector;
 
--- 2. Add embedding column to article_analyses
-alter table article_analyses
-  add column if not exists embedding vector(1536);
+-- 2. Add embedding column to article_analyses (2048-d for Nemotron free)
+alter table public.article_analyses
+  add column if not exists embedding vector(2048);
 
--- 3. IVFFlat cosine similarity index
-create index if not exists article_analyses_embedding_idx
-  on article_analyses
-  using ivfflat (embedding vector_cosine_ops)
-  with (lists = 100);
+-- 3. No IVFFlat/HNSW: pgvector ANN indexes cap at 2000 dims; Nemotron is 2048.
 
 -- 4. RPC function for related article lookup
-create or replace function match_related_articles(
+create or replace function public.match_related_articles(
   p_article_id  uuid,
-  p_embedding   vector(1536),
+  p_embedding   vector(2048),
   p_match_count int default 5
 )
 returns table (
@@ -88,9 +86,9 @@ as $$
     a.image_url,
     a.published_at,
     s.name as source_name
-  from article_analyses aa
-  join articles a on a.id = aa.article_id
-  join sources  s on s.id = a.source_id
+  from public.article_analyses aa
+  join public.articles a on a.id = aa.article_id
+  join public.sources  s on s.id = a.source_id
   where aa.embedding is not null
     and a.analyzed_at is not null
     and a.id <> p_article_id
@@ -105,114 +103,85 @@ $$;
 
 | File | Change |
 |------|--------|
-| `supabase/schema.sql` | Append pgvector extension, ALTER column, index, and RPC function |
-| `lib/supabase/types.ts` | Add `embedding: number[] \| null` to `article_analyses` Row and Insert |
-| `lib/ai/pipeline.ts` | After inserting analysis, generate embedding via `embed()`, update row |
-| `lib/supabase/queries/articles.ts` | Add `getArticleEmbedding`, `getRelatedArticles` |
-| `app/news/[id]/page.tsx` | Fetch embedding + related articles; render Related Articles section |
+| `supabase/schema.sql` | pgvector extension, embedding column, index, RPC |
+| `lib/supabase/types.ts` | `embedding: number[] \| null` on Row/Insert |
+| `lib/ai/openrouter.ts` | `EMBEDDING_MODEL_ID` + `getEmbeddingModelId()` |
+| `lib/ai/embed-article.ts` | `embedArticle()` via OpenRouter |
+| `lib/supabase/queries/analyses.ts` | `updateArticleEmbedding` |
+| `lib/pipeline/analyze.ts` | Embed after analysis; embedding-only backfill; gate `analyzed_at` |
+| `lib/supabase/queries/articles.ts` | Pending includes null embedding; `getArticleEmbedding`; `getRelatedArticles` |
+| `app/(site)/news/[id]/page.tsx` | Fetch related; render Related Articles section |
+| `.env.sample` | Document optional `EMBEDDING_MODEL_ID` |
 
 ---
 
 ## Implementation requirements
 
-### `lib/supabase/types.ts`
+### Pending detection
 
-Add `embedding: number[] | null` to `article_analyses.Row` and `article_analyses.Insert`.
-The Supabase JS client returns pgvector values as `number[]` when the column type is declared.
+`getPendingAnalysisArticles` returns articles where analysis is missing **or** `embedding` is null/empty, oldest `scraped_at` first. Return joined analysis when present so the pipeline can skip the LLM.
 
-### `lib/ai/pipeline.ts`
+### Pipeline loop
 
-Add an `embedArticle(text: string): Promise<number[] | null>` helper:
-- Import `embed` from `'ai'` and `createOpenAI` from `'@ai-sdk/openai'`.
-- Call `embed({ model: openai.embedding('text-embedding-3-small'), value: text })`.
-- Return `embedding` (a `number[]`) or `null` on failure.
+1. If no analysis → `analyzeArticle` → `upsertArticleAnalysis` (embedding still null).
+2. Call `embedArticle(title + "\n\n" + raw_text.slice(0, 8000))`.
+3. On success → `updateArticleEmbedding` → `setArticleAnalyzedAt`.
+4. On embed failure → fail article; do not set `analyzed_at`.
+5. Log `[analyze] embedding saved|failed` and include embed model in log metadata.
 
-Inside the main loop, after successfully inserting the analysis row:
-1. Call `embedArticle(article.title + '\n\n' + article.raw_text.slice(0, 8000))`.
-2. If embedding succeeds, call `.update({ embedding }).eq('article_id', article.id)` on `article_analyses`.
-3. If embedding fails, log a warning but do not block `analyzed_at` update.
-4. Call `articles.update({ analyzed_at })` as before.
-5. Log whether embedding was saved or skipped.
+### News details page
 
-### `lib/supabase/queries/articles.ts`
-
-Add:
-
-```ts
-export async function getArticleEmbedding(id: string): Promise<number[] | null>
-```
-- Select `article_analyses.embedding` where `article_id = id`.
-- Return `data.embedding as number[] | null` or `null` on error/missing.
-
-```ts
-export async function getRelatedArticles(
-  articleId: string,
-  embedding: number[],
-): Promise<RelatedStory[]>
-```
-- Call `supabase.rpc('match_related_articles', { p_article_id: articleId, p_embedding: embedding, p_match_count: 5 })`.
-- Map each row to `RelatedStory`: `{ id, category: source_name, location: '', title, imageUrl: image_url, publishedDate: formatDate(published_at), readTime: '' }`.
-- Return `[]` on error.
-
-### `app/news/[id]/page.tsx`
-
-- In the page function, after resolving `id`, call both queries in parallel:
-  ```ts
-  const [article, embedding] = await Promise.all([
-    getArticleById(id),
-    getArticleEmbedding(id),
-  ]);
-  ```
-- If `embedding` is non-null, call:
-  ```ts
-  const related = await getRelatedArticles(id, embedding);
-  ```
-  Otherwise `related = []`.
-- The existing `{related.length > 0 && ...}` block already renders `RelatedStoryCard` — no structural changes needed.
+- Parallel: `getArticleWithAnalysis(id)`, `getArticleEmbedding(id)`.
+- If embedding non-null → `getRelatedArticles(id, embedding)`; else `[]`.
+- Render “Related Articles” + `RelatedStoryCard` grid only when `related.length > 0`.
 
 ---
 
 ## Security requirements
 
-- All queries use the service role client (`getServiceClient()`) — server-only, never exposed to browser.
-- The RPC function uses `security invoker` — runs with the caller's role (service role), which bypasses RLS. This is correct since embedding search is an internal, server-side operation.
-- No new env vars required — `OPENAI_API_KEY` already used by the pipeline.
+- All queries use the service role client — server-only.
+- RPC uses `security invoker`; called only from server with service role.
+- No secrets in browser code; reuse `OPENROUTER_API_KEY`.
 
 ---
 
 ## Acceptance criteria
 
-- [ ] `article_analyses` table has an `embedding vector(1536)` column in Supabase.
-- [ ] `match_related_articles` RPC function exists and returns rows ordered by cosine distance.
-- [ ] Running `POST /api/analyze` on a pending article generates and saves an embedding.
-- [ ] The news details page fetches and displays up to 5 related articles when the current article has an embedding.
-- [ ] If the current article has no embedding, the Related Articles section is not shown.
-- [ ] TypeScript builds without errors.
+- [ ] `article_analyses` has `embedding vector(2048)` in schema.sql and Supabase.
+- [ ] `match_related_articles` RPC returns rows ordered by cosine distance.
+- [ ] `POST /api/analyze` generates and saves embeddings; sets `analyzed_at` only after both succeed.
+- [ ] Articles with analysis but null embedding are re-picked for embedding backfill (no LLM re-run).
+- [ ] News details page shows up to 5 related articles when the current article has an embedding.
+- [ ] Related section hidden when embedding is missing or related list is empty.
+- [ ] Typecheck, lint, and unit tests pass.
 
 ---
 
 ## Checks to run
 
 ```bash
-cd /Users/sujatagunale/Documents/company/youtube/biasly
-npm run build
+npm run typecheck
 npm run lint
+npm test
+npm run build
 ```
 
 ---
 
 ## Manual test steps
 
-1. **Run the SQL** from the "SQL to run" section above in Supabase Dashboard → SQL Editor.
+1. Run the SQL from the "SQL to run" section in Supabase Dashboard → SQL Editor.
 2. Start the dev server: `npm run dev`
-3. Analyze at least two pending articles:
-   ```bash
-   curl -X POST http://localhost:3000/api/analyze \
-     -H "x-biasly-admin-secret: $BIASLY_ADMIN_SECRET" \
-     -H "Content-Type: application/json" \
-     -d '{}'
-   ```
-4. Watch terminal — confirm you see `[analyze] embedding saved` lines for each article.
-5. Open any analyzed article at `http://localhost:3000/news/<id>`.
-6. If at least 2 articles have embeddings, a **Related Stories** section should appear below the article body with up to 5 cards.
-7. Open an article that was analyzed before this change (no embedding). The Related Stories section should not appear.
+3. Analyze pending articles (Windows — use `curl.exe`):
+
+```bash
+curl.exe -X POST http://localhost:3000/api/analyze ^
+  -H "x-biasly-admin-secret: YOUR_BIASLY_ADMIN_SECRET" ^
+  -H "Content-Type: application/json" ^
+  -d "{}"
+```
+
+4. Watch the Next.js terminal for `[analyze] embedding saved` lines.
+5. Open an analyzed article at `http://localhost:3000/news/<id>` (signed in).
+6. With ≥2 articles that have embeddings, **Related Articles** should appear under the body.
+7. An article without an embedding should not show the Related Articles section.

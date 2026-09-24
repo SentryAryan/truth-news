@@ -1,12 +1,20 @@
 import "server-only";
 
 import { deriveBiasScore } from "@/lib/ai/analysis-schema";
-import { ANALYSIS_MODEL_ID } from "@/lib/ai/openrouter";
-import { analyzeArticle } from "@/lib/pipeline/analyze-article";
-import { upsertArticleAnalysis } from "@/lib/supabase/queries/analyses";
+import { embedArticle } from "@/lib/ai/embed-article";
 import {
-  getPendingAnalysisArticles,
-  setArticleAnalyzedAt,
+    ANALYSIS_MODEL_ID,
+    getEmbeddingModelId,
+} from "@/lib/ai/openrouter";
+import { skippedAfterRateLimitAbort } from "@/lib/pipeline/analyze-accounting";
+import { analyzeArticle } from "@/lib/pipeline/analyze-article";
+import {
+    updateArticleEmbedding,
+    upsertArticleAnalysis,
+} from "@/lib/supabase/queries/analyses";
+import {
+    getPendingAnalysisArticles,
+    setArticleAnalyzedAt,
 } from "@/lib/supabase/queries/articles";
 import { completeLog, createLog } from "@/lib/supabase/queries/logs";
 import type { ArticleWithAnalysis, LogStatus } from "@/lib/supabase/types";
@@ -29,6 +37,7 @@ export type AnalysisResult = {
   skipped: number;
   totalDurationMs: number;
   errors: string[];
+  abortedForRateLimit?: boolean;
 };
 
 function getBatchSize(): number {
@@ -60,22 +69,30 @@ function resolveStatus(analyzed: number, failed: number, errors: string[]): LogS
 async function loadPendingBatch(
   batchSize: number,
   articleIds: string[] | undefined,
+  excludeIds: Set<string>,
 ): Promise<ArticleWithAnalysis[]> {
-  const fetchLimit = articleIds?.length
-    ? Math.max(articleIds.length, batchSize)
-    : batchSize;
+  // Fetch extra rows so already-attempted ids in this run can be skipped
+  // without stalling the while-loop on an empty filtered batch.
+  const fetchLimit = Math.max(
+    batchSize + excludeIds.size,
+    articleIds?.length ?? 0,
+    batchSize,
+  );
   const pending = await getPendingAnalysisArticles(fetchLimit);
 
-  if (!articleIds || articleIds.length === 0) {
-    return pending.slice(0, batchSize);
-  }
+  const idFilter =
+    articleIds && articleIds.length > 0 ? new Set(articleIds) : null;
 
-  const idSet = new Set(articleIds);
-  return pending.filter((a) => idSet.has(a.id)).slice(0, batchSize);
+  return pending
+    .filter((a) => !excludeIds.has(a.id))
+    .filter((a) => (idFilter ? idFilter.has(a.id) : true))
+    .slice(0, batchSize);
 }
 
 /**
- * Process pending articles (missing article_analyses) via OpenRouter.
+ * Process pending articles (missing analysis or missing embedding) via OpenRouter.
+ * Sets analyzed_at only after both analysis and embedding are saved.
+ * Aborts the rest of the run on the first OpenRouter rate-limit error.
  */
 export async function runAnalysis(
   opts: AnalysisOptions = {},
@@ -87,9 +104,10 @@ export async function runAnalysis(
     typeof opts.limit === "number" && opts.limit > 0
       ? Math.min(opts.limit, envCap)
       : envCap;
+  const embeddingModelId = getEmbeddingModelId();
 
   console.log(
-    `[analyze] started — batchSize: ${batchSize}, maxPerRun: ${maxTotal}, model: ${ANALYSIS_MODEL_ID}`,
+    `[analyze] started — batchSize: ${batchSize}, maxPerRun: ${maxTotal}, model: ${ANALYSIS_MODEL_ID}, embedding: ${embeddingModelId}`,
   );
 
   const log = await createLog({
@@ -102,16 +120,17 @@ export async function runAnalysis(
   let failed = 0;
   let skipped = 0;
   let pendingFound = 0;
+  let abortedForRateLimit = false;
   const errors: string[] = [];
   const seenIds = new Set<string>();
 
-  while (analyzed + failed < maxTotal) {
+  outer: while (analyzed + failed < maxTotal) {
     const remaining = maxTotal - (analyzed + failed);
     const thisBatch = Math.min(batchSize, remaining);
     let batch: ArticleWithAnalysis[];
 
     try {
-      batch = await loadPendingBatch(thisBatch, opts.articleIds);
+      batch = await loadPendingBatch(thisBatch, opts.articleIds, seenIds);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "failed to load pending articles";
@@ -120,8 +139,6 @@ export async function runAnalysis(
       break;
     }
 
-    // Filter out already-attempted ids in this run (defensive)
-    batch = batch.filter((a) => !seenIds.has(a.id));
     if (batch.length === 0) {
       break;
     }
@@ -129,7 +146,8 @@ export async function runAnalysis(
     pendingFound += batch.length;
     console.log(`[analyze] batch of ${batch.length} articles`);
 
-    for (const article of batch) {
+    for (let i = 0; i < batch.length; i += 1) {
+      const article = batch[i]!;
       seenIds.add(article.id);
 
       if (analyzed + failed >= maxTotal) {
@@ -140,43 +158,93 @@ export async function runAnalysis(
       console.log(`[analyze] article ${article.id} — ${article.title.slice(0, 60)}`);
 
       try {
-        const output = await analyzeArticle({
-          id: article.id,
-          title: article.title,
-          raw_text: article.raw_text,
-        });
+        const existingAnalysis = article.article_analyses;
 
-        if (!output) {
+        if (!existingAnalysis) {
+          const analysisResult = await analyzeArticle({
+            id: article.id,
+            title: article.title,
+            raw_text: article.raw_text,
+          });
+
+          if (!analysisResult.ok) {
+            failed += 1;
+            if (analysisResult.rateLimited) {
+              const remainingSkipped = skippedAfterRateLimitAbort(
+                batch.length,
+                i,
+              );
+              skipped += remainingSkipped;
+              errors.push(
+                `${article.id}: OpenRouter rate limit — aborting remaining articles`,
+              );
+              abortedForRateLimit = true;
+              console.error(
+                `[analyze] rate limited — aborting remaining articles after ${article.id} (skipped: ${remainingSkipped})`,
+              );
+              break outer;
+            }
+            errors.push(
+              `${article.id}: invalid or empty analysis after retry`,
+            );
+            continue;
+          }
+
+          const output = analysisResult.output;
+          const biasScore = deriveBiasScore(
+            output.left_percentage,
+            output.right_percentage,
+          );
+
+          await upsertArticleAnalysis({
+            article_id: article.id,
+            summary: output.summary,
+            sentiment_score: output.sentiment_score,
+            sentiment_label: output.sentiment_label,
+            bias_score: biasScore,
+            bias_label: output.bias_label,
+            left_percentage: output.left_percentage,
+            center_percentage: output.center_percentage,
+            right_percentage: output.right_percentage,
+            confidence: output.confidence,
+            framing_notes: output.framing_notes,
+            loaded_terms: output.loaded_terms,
+            disclaimer: output.disclaimer,
+            model: ANALYSIS_MODEL_ID,
+            embedding: null,
+          });
+          console.log(`[analyze] analysis saved ${article.id}`);
+        } else {
+          console.log(`[analyze] embedding backfill ${article.id}`);
+        }
+
+        const embedResult = await embedArticle(article.title, article.raw_text);
+        if (!embedResult.ok) {
           failed += 1;
-          errors.push(`${article.id}: invalid or empty analysis after retry`);
+          if (embedResult.rateLimited) {
+            const remainingSkipped = skippedAfterRateLimitAbort(
+              batch.length,
+              i,
+            );
+            skipped += remainingSkipped;
+            errors.push(
+              `${article.id}: OpenRouter rate limit on embedding — aborting remaining articles`,
+            );
+            abortedForRateLimit = true;
+            console.error(
+              `[analyze] rate limited on embed — aborting remaining articles after ${article.id} (skipped: ${remainingSkipped})`,
+            );
+            break outer;
+          }
+          errors.push(`${article.id}: embedding generation failed`);
+          console.error(`[analyze] embedding failed ${article.id}`);
           continue;
         }
 
-        const biasScore = deriveBiasScore(
-          output.left_percentage,
-          output.right_percentage,
-        );
-
-        await upsertArticleAnalysis({
-          article_id: article.id,
-          summary: output.summary,
-          sentiment_score: output.sentiment_score,
-          sentiment_label: output.sentiment_label,
-          bias_score: biasScore,
-          bias_label: output.bias_label,
-          left_percentage: output.left_percentage,
-          center_percentage: output.center_percentage,
-          right_percentage: output.right_percentage,
-          confidence: output.confidence,
-          framing_notes: output.framing_notes,
-          loaded_terms: output.loaded_terms,
-          disclaimer: output.disclaimer,
-          model: ANALYSIS_MODEL_ID,
-        });
-
+        await updateArticleEmbedding(article.id, embedResult.embedding);
         await setArticleAnalyzedAt(article.id, new Date().toISOString());
         analyzed += 1;
-        console.log(`[analyze] saved ${article.id}`);
+        console.log(`[analyze] embedding saved ${article.id}`);
       } catch (err) {
         failed += 1;
         const message =
@@ -199,6 +267,7 @@ export async function runAnalysis(
     skipped,
     totalDurationMs,
     errors,
+    ...(abortedForRateLimit ? { abortedForRateLimit: true } : {}),
   };
 
   await completeLog(log.id, {
@@ -213,12 +282,16 @@ export async function runAnalysis(
       batchSize,
       maxPerRun: maxTotal,
       model: ANALYSIS_MODEL_ID,
+      embeddingModel: embeddingModelId,
+      abortedForRateLimit,
     },
   });
 
   console.log("[analyze] summary", result);
   console.log(
-    `[analyze] completed — status: ${status}, analyzed: ${analyzed}, failed: ${failed}, durationMs: ${totalDurationMs}`,
+    `[analyze] completed — status: ${status}, analyzed: ${analyzed}, failed: ${failed}, skipped: ${skipped}, durationMs: ${totalDurationMs}${
+      abortedForRateLimit ? ", abortedForRateLimit: true" : ""
+    }`,
   );
 
   return result;

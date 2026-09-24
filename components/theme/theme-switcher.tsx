@@ -9,6 +9,7 @@ import {
 import { useTheme } from "@/components/theme/theme-provider";
 import { cn } from "@/lib/cn";
 import type { ThemeMode } from "@/lib/theme";
+import posthog from "posthog-js";
 import { useEffect, useId, useRef, useState } from "react";
 
 const OPTIONS: Array<{
@@ -105,6 +106,12 @@ export function ThemeSwitcher({ className }: ThemeSwitcherProps) {
                 role="menuitemradio"
                 aria-checked={selected}
                 onClick={() => {
+                  if (
+                    process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN &&
+                    process.env.NEXT_PUBLIC_POSTHOG_HOST
+                  ) {
+                    posthog.capture("theme_changed", { theme: mode });
+                  }
                   setTheme(mode);
                   setOpen(false);
                 }}

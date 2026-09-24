@@ -1,16 +1,23 @@
 import "server-only";
 
 import {
-  AnalysisOutputSchema,
-  type AnalysisOutput,
+    AnalysisOutputSchema,
+    type AnalysisOutput,
 } from "@/lib/ai/analysis-schema";
 import {
-  ANALYSIS_MODEL_ID,
-  getOpenRouterClient,
+    ANALYSIS_MODEL_ID,
+    getOpenRouterClient,
 } from "@/lib/ai/openrouter";
+import {
+    OpenRouterRateLimitError,
+    isOpenRouterRateLimitError,
+} from "@/lib/ai/openrouter-errors";
 import { generateObject } from "ai";
 
 const MAX_TEXT_CHARS = 12_000;
+
+/** Single HTTP attempt — rate limits must not burn SDK retries. */
+const AI_MAX_RETRIES = 0;
 
 const SYSTEM_PROMPT = `You are an impartial news analysis assistant for truth-news.
 Analyze ONLY the provided article title and body text. Do not infer political framing from the outlet or source name.
@@ -44,37 +51,62 @@ async function callOnce(
     system: SYSTEM_PROMPT,
     prompt: `Title: ${title}\n\nArticle text:\n${truncated}`,
     temperature: 0,
+    maxRetries: AI_MAX_RETRIES,
+    telemetry: {
+      functionId: "article-analysis",
+      recordInputs: true,
+      recordOutputs: true,
+    },
   });
 
   return AnalysisOutputSchema.parse(object);
 }
 
+export type AnalyzeArticleResult =
+  | { ok: true; output: AnalysisOutput }
+  | { ok: false; rateLimited: true; message: string }
+  | { ok: false; rateLimited: false; message: string };
+
 /**
  * Analyze one article via OpenRouter `openrouter/free`.
- * Retries once on failure; returns null if both attempts fail.
+ * Retries once on non-rate-limit failures; never retries rate limits.
  */
 export async function analyzeArticle(input: {
   id: string;
   title: string;
   raw_text: string;
-}): Promise<AnalysisOutput | null> {
+}): Promise<AnalyzeArticleResult> {
   try {
-    return await callOnce(input.title, input.raw_text);
+    const output = await callOnce(input.title, input.raw_text);
+    return { ok: true, output };
   } catch (firstError) {
+    if (isOpenRouterRateLimitError(firstError)) {
+      const message =
+        firstError instanceof Error ? firstError.message : "rate limited";
+      console.error(`[analyze] rate limited for ${input.id}: ${message}`);
+      return { ok: false, rateLimited: true, message };
+    }
+
     const firstMessage =
       firstError instanceof Error ? firstError.message : "analyze failed";
-    console.warn(
-      `[analyze] retry once for ${input.id}: ${firstMessage}`,
-    );
+    console.warn(`[analyze] retry once for ${input.id}: ${firstMessage}`);
+
     try {
-      return await callOnce(input.title, input.raw_text);
+      const output = await callOnce(input.title, input.raw_text);
+      return { ok: true, output };
     } catch (secondError) {
+      if (isOpenRouterRateLimitError(secondError)) {
+        const message =
+          secondError instanceof Error ? secondError.message : "rate limited";
+        console.error(`[analyze] rate limited for ${input.id}: ${message}`);
+        return { ok: false, rateLimited: true, message };
+      }
       const secondMessage =
         secondError instanceof Error ? secondError.message : "analyze failed";
-      console.error(
-        `[analyze] failed for ${input.id}: ${secondMessage}`,
-      );
-      return null;
+      console.error(`[analyze] failed for ${input.id}: ${secondMessage}`);
+      return { ok: false, rateLimited: false, message: secondMessage };
     }
   }
 }
+
+export { OpenRouterRateLimitError };

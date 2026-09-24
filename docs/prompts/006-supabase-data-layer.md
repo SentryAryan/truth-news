@@ -64,7 +64,7 @@ details page to read live data from Supabase instead of mock data.
 7. **Related articles** → empty array for now; pgvector similarity is section 20.
 
 8. **`supabase/schema.sql`** — canonical schema file. Does NOT include the
-   `embedding vector(1536)` column (added in section 20 after pgvector is enabled).
+   `embedding vector(2048)` column (added in section 20 after pgvector is enabled).
 
 9. **`supabase/functions` tsconfig exclude** — prevents Deno-specific imports in Edge
    Functions from breaking Next.js TypeScript compilation.

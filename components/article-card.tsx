@@ -25,6 +25,7 @@ export function ArticleCard({
   sentimentLabel,
   framingLabel,
   confidence,
+  priorityImage = false,
 }: ArticleCardProps) {
   const metaChips =
     sentimentLabel || framingLabel || typeof confidence === "number" ? (
@@ -62,6 +63,8 @@ export function ArticleCard({
             fill
             className="object-cover"
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            loading={priorityImage ? "eager" : "lazy"}
+            fetchPriority={priorityImage ? "high" : "auto"}
           />
           <span
             className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-[1px]"
@@ -116,6 +119,8 @@ export function ArticleCard({
             fill
             className="object-cover"
             sizes="144px"
+            loading={priorityImage ? "eager" : "lazy"}
+            fetchPriority={priorityImage ? "high" : "auto"}
           />
         </div>
 

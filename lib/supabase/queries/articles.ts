@@ -1,19 +1,27 @@
 import "server-only";
 
+import { needsAnalysisOrEmbedding, parseEmbedding } from "@/lib/ai/embed-text";
+import { HOME_PAGE_SIZES } from "@/lib/home-feed-params";
+import {
+  mapMatchRowToRelatedStory,
+  type MatchRelatedArticleRow,
+} from "@/lib/supabase/related-articles";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type {
-    Article,
-    ArticleAnalysis,
-    ArticleInsert,
-    ArticleWithAnalysis,
-    BiasLabel,
-    Source,
+  Article,
+  ArticleAnalysis,
+  ArticleInsert,
+  ArticleWithAnalysis,
+  BiasLabel,
+  SentimentLabel,
+  Source,
 } from "@/lib/supabase/types";
 import type {
-    DetailArticle,
-    HomeArticle,
-    OverallBiasLabel,
-    SourceBias,
+  DetailArticle,
+  HomeArticle,
+  OverallBiasLabel,
+  RelatedStory,
+  SourceBias,
 } from "@/lib/types/article-display";
 
 const URL_EXISTENCE_CHUNK_SIZE = 15;
@@ -179,13 +187,153 @@ function mapToDetailArticle(row: JoinedArticleRow): DetailArticle | null {
 export async function getLatestAnalyzedArticles(
   limit: number = DEFAULT_HOME_LIMIT,
 ): Promise<HomeArticle[]> {
+  const result = await getHomeArticlesPage({
+    page: 1,
+    pageSize: (HOME_PAGE_SIZES as readonly number[]).includes(limit)
+      ? (limit as 10 | 20 | 50)
+      : DEFAULT_HOME_LIMIT,
+    bias: null,
+    sentiment: null,
+    source: null,
+  });
+  return result.articles;
+}
+
+export type HomeArticlesPageQuery = {
+  page: number;
+  pageSize: number;
+  bias: BiasLabel | null;
+  sentiment: SentimentLabel | null;
+  source: string | null;
+};
+
+export type HomeArticlesPageResult = {
+  articles: HomeArticle[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type HomeFilterSource = {
+  id: string;
+  name: string;
+};
+
+/**
+ * Paginated homepage feed with optional bias / sentiment / source filters.
+ * Avoids joined-table `.eq` filters (AGENTS.md gotcha): bias/sentiment are
+ * resolved to article ids via article_analyses first.
+ */
+export async function getHomeArticlesPage(
+  query: HomeArticlesPageQuery,
+): Promise<HomeArticlesPageResult> {
+  const pageSize = query.pageSize > 0 ? query.pageSize : DEFAULT_HOME_LIMIT;
+  let page = query.page >= 1 ? Math.floor(query.page) : 1;
+
   const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("articles")
-    .select("*, sources(*), article_analyses(*)")
-    .not("analyzed_at", "is", null)
-    .order("published_at", { ascending: false })
-    .limit(limit);
+
+  let analysisArticleIds: string[] | null = null;
+  if (query.bias || query.sentiment) {
+    let analysisQuery = supabase.from("article_analyses").select("article_id");
+    if (query.bias) {
+      analysisQuery = analysisQuery.eq("bias_label", query.bias);
+    }
+    if (query.sentiment) {
+      analysisQuery = analysisQuery.eq("sentiment_label", query.sentiment);
+    }
+    const { data: analysisRows, error: analysisError } = await analysisQuery;
+    if (analysisError) {
+      throw new Error(
+        `getHomeArticlesPage analysis filter failed: ${analysisError.message}`,
+      );
+    }
+    analysisArticleIds = (analysisRows ?? []).map((row) => row.article_id);
+    if (analysisArticleIds.length === 0) {
+      return {
+        articles: [],
+        total: 0,
+        page: 1,
+        pageSize,
+        totalPages: 0,
+      };
+    }
+  }
+
+  // Bias/sentiment path: chunk .in() filters (same limit as URL existence check)
+  // then sort + slice in memory so PostgREST URL length stays safe.
+  if (analysisArticleIds) {
+    const rows: JoinedArticleRow[] = [];
+    for (
+      let i = 0;
+      i < analysisArticleIds.length;
+      i += URL_EXISTENCE_CHUNK_SIZE
+    ) {
+      const chunk = analysisArticleIds.slice(i, i + URL_EXISTENCE_CHUNK_SIZE);
+      let q = supabase
+        .from("articles")
+        .select("*, sources(*), article_analyses(*)")
+        .not("analyzed_at", "is", null)
+        .in("id", chunk)
+        .order("published_at", { ascending: false });
+      if (query.source) {
+        q = q.eq("source_id", query.source);
+      }
+      const { data, error } = await q;
+      if (error) {
+        if (isMissingRelationError(error.message)) {
+          console.warn(
+            "[supabase] articles table missing — apply supabase/schema.sql in the Dashboard SQL Editor, then reload.",
+            error.message,
+          );
+          return {
+            articles: [],
+            total: 0,
+            page: 1,
+            pageSize,
+            totalPages: 0,
+          };
+        }
+        throw new Error(`getHomeArticlesPage failed: ${error.message}`);
+      }
+      rows.push(...((data as JoinedArticleRow[] | null) ?? []));
+    }
+
+    rows.sort((a, b) => {
+      const aTime = a.published_at ? Date.parse(a.published_at) : 0;
+      const bTime = b.published_at ? Date.parse(b.published_at) : 0;
+      return bTime - aTime;
+    });
+
+    const total = rows.length;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    if (totalPages > 0 && page > totalPages) {
+      page = totalPages;
+    }
+    const from = (page - 1) * pageSize;
+    const articles = rows
+      .slice(from, from + pageSize)
+      .map(mapToHomeArticle)
+      .filter((article): article is HomeArticle => article !== null);
+    return { articles, total, page, pageSize, totalPages };
+  }
+
+  const buildArticlesQuery = () => {
+    let q = supabase
+      .from("articles")
+      .select("*, sources(*), article_analyses(*)", { count: "exact" })
+      .not("analyzed_at", "is", null)
+      .order("published_at", { ascending: false });
+
+    if (query.source) {
+      q = q.eq("source_id", query.source);
+    }
+    return q;
+  };
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const { data, error, count } = await buildArticlesQuery().range(from, to);
 
   if (error) {
     if (isMissingRelationError(error.message)) {
@@ -193,14 +341,57 @@ export async function getLatestAnalyzedArticles(
         "[supabase] articles table missing — apply supabase/schema.sql in the Dashboard SQL Editor, then reload.",
         error.message,
       );
-      return [];
+      return {
+        articles: [],
+        total: 0,
+        page: 1,
+        pageSize,
+        totalPages: 0,
+      };
     }
-    throw new Error(`getLatestAnalyzedArticles failed: ${error.message}`);
+    throw new Error(`getHomeArticlesPage failed: ${error.message}`);
   }
 
-  return (data as JoinedArticleRow[] | null ?? [])
+  const total = count ?? 0;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+
+  if (totalPages > 0 && page > totalPages) {
+    page = totalPages;
+    const retryFrom = (page - 1) * pageSize;
+    const retryTo = retryFrom + pageSize - 1;
+    const retry = await buildArticlesQuery().range(retryFrom, retryTo);
+    if (retry.error) {
+      throw new Error(`getHomeArticlesPage failed: ${retry.error.message}`);
+    }
+    const articles = (retry.data as JoinedArticleRow[] | null ?? [])
+      .map(mapToHomeArticle)
+      .filter((article): article is HomeArticle => article !== null);
+    return { articles, total, page, pageSize, totalPages };
+  }
+
+  const articles = (data as JoinedArticleRow[] | null ?? [])
     .map(mapToHomeArticle)
     .filter((article): article is HomeArticle => article !== null);
+
+  return { articles, total, page, pageSize, totalPages };
+}
+
+export async function getActiveSourcesForFilter(): Promise<HomeFilterSource[]> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sources")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    if (isMissingRelationError(error.message)) {
+      return [];
+    }
+    throw new Error(`getActiveSourcesForFilter failed: ${error.message}`);
+  }
+
+  return data ?? [];
 }
 
 export async function getArticleWithAnalysis(
@@ -297,9 +488,10 @@ export async function setArticleAnalyzedAt(
 }
 
 /**
- * Return articles with no article_analyses row, oldest scraped_at first.
+ * Return articles missing analysis or missing embedding, oldest scraped_at first.
  * Scans in pages so newer pending rows are not skipped when older rows
  * already have analyses (unlike a single small LIMIT window).
+ * Articles with analysis but null embedding are returned for embedding backfill.
  */
 export async function getPendingAnalysisArticles(
   limit: number = 20,
@@ -332,13 +524,14 @@ export async function getPendingAnalysisArticles(
     }
 
     for (const row of rows) {
-      if (asSingleAnalysis(row.article_analyses) !== null) {
+      const analysis = asSingleAnalysis(row.article_analyses);
+      if (!needsAnalysisOrEmbedding(analysis)) {
         continue;
       }
       pending.push({
         ...row,
         sources: asSingleSource(row.sources),
-        article_analyses: null,
+        article_analyses: analysis,
       });
       if (pending.length >= limit) {
         break;
@@ -352,4 +545,43 @@ export async function getPendingAnalysisArticles(
   }
 
   return pending;
+}
+
+export async function getArticleEmbedding(
+  articleId: string,
+): Promise<number[] | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("article_analyses")
+    .select("embedding")
+    .eq("article_id", articleId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`[getArticleEmbedding] ${error.message}`);
+    return null;
+  }
+
+  return parseEmbedding(data?.embedding ?? null);
+}
+
+export async function getRelatedArticles(
+  articleId: string,
+  embedding: number[],
+  matchCount: number = 5,
+): Promise<RelatedStory[]> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("match_related_articles", {
+    p_article_id: articleId,
+    p_embedding: embedding,
+    p_match_count: matchCount,
+  });
+
+  if (error) {
+    console.error(`[getRelatedArticles] ${error.message}`);
+    return [];
+  }
+
+  const rows = (data as MatchRelatedArticleRow[] | null) ?? [];
+  return rows.map(mapMatchRowToRelatedStory);
 }

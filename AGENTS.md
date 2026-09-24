@@ -205,7 +205,7 @@ Each article analysis should store:
 - disclaimer
 - model name
 
-The `embedding vector(1536)` column is added to `article_analyses` in section 20 after pgvector is enabled. Do not include it in the initial schema.
+The `embedding vector(2048)` column is added to `article_analyses` in section 20 after pgvector is enabled. Do not include it in the initial schema.
 
 When any of these fields are added or changed, update `supabase/schema.sql`, `lib/supabase/types.ts`, and run the corresponding ALTER SQL in Supabase Dashboard â†’ SQL Editor before testing.
 
@@ -610,9 +610,9 @@ Framing output rules:
 
 This section is implemented after AI analysis is working (section 19). pgvector upgrades the analysis pipeline to also generate embeddings and powers a Related Articles feature on the news details page.
 
-Enable pgvector in Supabase Dashboard under Database Extensions. Then add an `embedding vector(1536)` column to `article_analyses` and create an IVFFlat cosine index on it via the SQL Editor. Update `supabase/schema.sql`, `lib/supabase/types.ts`, and run the ALTER SQL before testing.
+Enable pgvector in Supabase Dashboard under Database Extensions. Then add an `embedding vector(2048)` column to `article_analyses` via the SQL Editor. Update `supabase/schema.sql`, `lib/supabase/types.ts`, and run the ALTER SQL before testing. Do **not** create an IVFFlat/HNSW index on this column: pgvector ANN indexes cap at 2000 dimensions and Nemotron embeddings are 2048-d; Related Articles still uses exact cosine distance (`<=>`).
 
-Update the `/api/analyze` route to also generate embeddings via OpenRouter using an **embedding-capable model id** (not `openrouter/free`, which is a chat free-models router). Save the result to `article_analyses.embedding`. Update `analyzed_at` only after both analysis and embedding are saved. Because pending detection uses LEFT JOIN logic (see section 19), articles whose `article_analyses` row exists but has `embedding IS NULL` will automatically be picked up for embedding backfill on the next run without re-running the full analysis.
+Update the `/api/analyze` route to also generate embeddings via OpenRouter using an **embedding-capable model id**. Default: `nvidia/nemotron-3-embed-1b:free` (2048-d). Do **not** use `openrouter/free` for embeddings — that id is a chat free-models router only. Override with optional `EMBEDDING_MODEL_ID` if needed. Save the result to `article_analyses.embedding`. Update `analyzed_at` only after both analysis and embedding are saved. Because pending detection uses LEFT JOIN logic (see section 19), articles whose `article_analyses` row exists but has `embedding IS NULL` will automatically be picked up for embedding backfill on the next run without re-running the full analysis.
 
 To find related articles, query `article_analyses` joined to `articles` and `sources`, filter to rows where the embedding is not null and the article is analyzed and is not the current article, then order by cosine distance (`<=>`) to the current article's embedding and limit to 5 results.
 
@@ -641,7 +641,7 @@ Never run from browser code:
 
 ## Environment variables
 
-Canonical list lives in `.env.example`. Only `NEXT_PUBLIC_*` values may reach browser code; everything else is server-only. `CRON_SECRET` is injected by Vercel and must not be added to `.env.local`.
+Canonical list lives in `.env.sample`. Only `NEXT_PUBLIC_*` values may reach browser code; everything else is server-only. `CRON_SECRET` is injected by Vercel and must not be added to `.env.local`.
 
 | Variable                                                                      | Purpose                                                                                 | Exposure        |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------- |
@@ -652,13 +652,14 @@ Canonical list lives in `.env.example`. Only `NEXT_PUBLIC_*` values may reach br
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`                                               | Supabase anon key                                                                       | client + server |
 | `SUPABASE_SERVICE_ROLE_KEY`                                                   | Service-role DB access for writes and pipeline reads                                    | server only     |
 | `OXY_WSA_USERNAME` / `OXY_WSA_PASSWORD`                                       | Oxylabs Web Scraper API + Scheduler auth                                                | server only     |
-| `OPENROUTER_API_KEY`                                                          | OpenRouter API key for analysis (`openrouter/free`)                                     | server only     |
+| `OPENROUTER_API_KEY`                                                          | OpenRouter API key for analysis (`openrouter/free`) and embeddings                      | server only     |
+| `EMBEDDING_MODEL_ID`                                                          | Optional; default `nvidia/nemotron-3-embed-1b:free` (2048-d)                            | server only     |
 | `BIASLY_ADMIN_SECRET`                                                         | Shared secret for `x-biasly-admin-secret` on action routes (section 15)                 | server only     |
 | `ANALYSIS_BATCH_SIZE`                                                         | Optional; articles analyzed per batch (default 5)                                       | server only     |
 | `ANALYSIS_MAX_PER_RUN`                                                        | Optional; max pending articles per `POST /api/analyze` run (default 20)                 | server only     |
 | `CRON_SECRET`                                                                 | Protects `GET /api/cron/pipeline`; injected by Vercel, not in `.env.local` (section 18) | server only     |
 
-Keep this table and `.env.example` in sync when variables change.
+Keep this table and `.env.sample` in sync when variables change.
 
 Use TypeScript.
 
@@ -714,7 +715,9 @@ After implementation, run `typecheck` and `lint` at minimum. Add `build` when ro
 - Clerk components (UserButton, profile card, and other auth UI) must follow the app light/dark theme, not Clerk's default appearance alone.
 - Prefer header auth-slot UX that avoids an empty flash while Clerk hydrates (skeleton/placeholder) so the profile control does not appear long after article content.
 - Implementation prompts always go in `docs/prompts/` only; never create another `prompts/` folder elsewhere in the repo.
-- On Windows, share local API test commands with `curl.exe` (not PowerShell's `curl` alias / `Invoke-WebRequest`) so `-H` headers work as documented.
+- When required Supabase schema/migration SQL is part of a feature, apply it via Supabase tooling when asked rather than leaving Dashboard SQL as a manual user step.
+- Prefer server-applied homepage pagination and filters over raising hard list caps or client-only paging; place filters (shadcn `Select`, not native `<select>`) top-right beside Top news; keep pagination only at the bottom of the grid (no bottom filters); hide pagination when `totalPages <= 1`; shadcn pagination is acceptable. Homepage searchParam navigations need client pending skeletons (route `loading.tsx` alone is insufficient for soft filter/page changes); the first above-fold feed image should use eager loading for LCP.
+- Prefer Postman (`docs/postman/truth-news.postman_collection.json`) for local API testing over repeating curl; keep request bodies as JSON language where a body is required; after any task that adds or changes an API route, update that collection and `docs/postman/README.md` in the same change. When sharing curl on Windows, use `curl.exe` (not PowerShell's `curl` alias).
 
 ## Learned Workspace Facts
 
@@ -723,10 +726,10 @@ After implementation, run `typecheck` and `lint` at minimum. Add `build` when ro
 - Design tokens live as semantic CSS variables in `app/globals.css` on `:root` and `.dark`, exposed through Tailwind `@theme` utilities.
 - Theme runtime uses `lib/theme.ts`, `ThemeProvider`, FOUC `ThemeScript`, and localStorage key `truth-news-theme` with modes `light` | `dark` | `system`.
 - Dark tokens are derived to mirror light semantic roles while keeping Left/Right bias identity; the `/design-system` route is the dedicated token/primitives/theme showcase.
-- Homepage and chrome live under `app/(site)/` with shared layout pieces in `components/layout/` (`TopBar`, `SiteHeader`, `SiteFooter`).
+- Homepage and chrome live under `app/(site)/` with shared layout pieces in `components/layout/` (`TopBar`, `SiteHeader`, `SiteFooter`); brand marks for light/dark chrome live under `public/icons/project/` (`truth-news-favicon-black.png` for light mode, `truth-news-favicon-white.png` for dark mode).
 - UI and feature implementation prompts live under `docs/prompts/`; mockups under `docs/prompt-imgs/` (for example `004-home-page-ui.md`, `02-homepage.png`, `03-news-details-page.png`).
 - Auth model: the news feed/home is public; news details (`/news/[id]`) are gated behind Clerk sign-in.
-- Brand marks for light/dark chrome live under `public/icons/project/` (`truth-news-favicon-black.png` for light mode, `truth-news-favicon-white.png` for dark mode).
-- AI analysis uses Vercel AI SDK via OpenRouter (`OPENROUTER_API_KEY`); the analysis model is always `openrouter/free`. Embeddings (§20) require a separate embedding-capable model id, not the free chat router.
-- `ANALYSIS_BATCH_SIZE` is the per-batch chunk size; `ANALYSIS_MAX_PER_RUN` caps how many pending articles a single `POST /api/analyze` run processes (retries on parse failure still add extra OpenRouter calls within that run).
+- AI analysis uses Vercel AI SDK via OpenRouter (`OPENROUTER_API_KEY`); chat analysis model is always `openrouter/free`. Embeddings use `nvidia/nemotron-3-embed-1b:free` (2048-dim) via OpenRouter AI SDK `embed()` and store in `article_analyses.embedding`; Related Articles requires that column non-null. OpenRouter has no free-embeddings router analogous to `openrouter/free` — pin a concrete embedding model id (override with `EMBEDDING_MODEL_ID`); never use `openrouter/free` for embeddings.
+- `ANALYSIS_BATCH_SIZE` is the per-batch chunk size; `ANALYSIS_MAX_PER_RUN` caps how many pending articles a single `POST /api/analyze` run processes. Full pending articles cost at least two OpenRouter calls (chat analysis + embedding; analysis may retry once); embedding-only backfill is one call. Pending is one interleaved list of missing analysis rows and rows with null/empty `embedding` (not a two-phase pass). On OpenRouter free-model rate limits, abort remaining articles without further retries, count unprocessed as `skipped`, and surface `abortedForRateLimit`.
 - Scraped article image CDNs must be allowlisted in `next.config` `images.remotePatterns`; missing hosts (e.g. BBC `ichef.bbci.co.uk`) cause homepage `next/image` 500s.
+- Admin API manual testing lives in `docs/postman/truth-news.postman_collection.json` (variables: `baseUrl`, `adminSecret`).

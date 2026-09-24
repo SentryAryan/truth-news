@@ -75,6 +75,7 @@ export type ArticleAnalysisRow = {
   loaded_terms: string[];
   disclaimer: string;
   model: string;
+  embedding: number[] | string | null;
   created_at: string;
   updated_at: string;
 };
@@ -95,6 +96,7 @@ export type ArticleAnalysisInsert = {
   loaded_terms?: string[];
   disclaimer: string;
   model: string;
+  embedding?: number[] | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -177,22 +179,61 @@ export type OxylabsScheduleRunInsert = {
 
 export type OxylabsScheduleRunUpdate = Partial<OxylabsScheduleRunInsert>;
 
-type TableDef<Row, Insert, Update> = {
+type Relationship = {
+  foreignKeyName: string;
+  columns: string[];
+  isOneToOne: boolean;
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+
+type TableDef<
+  Row,
+  Insert,
+  Update,
+  Relationships extends readonly Relationship[] = [],
+> = {
   Row: Row;
   Insert: Insert;
   Update: Update;
-  Relationships: [];
+  Relationships: Relationships;
 };
+
+type ArticlesRelationships = [
+  {
+    foreignKeyName: "articles_source_id_fkey";
+    columns: ["source_id"];
+    isOneToOne: false;
+    referencedRelation: "sources";
+    referencedColumns: ["id"];
+  },
+];
+
+type ArticleAnalysesRelationships = [
+  {
+    foreignKeyName: "article_analyses_article_id_fkey";
+    columns: ["article_id"];
+    isOneToOne: true;
+    referencedRelation: "articles";
+    referencedColumns: ["id"];
+  },
+];
 
 export type Database = {
   public: {
     Tables: {
       sources: TableDef<SourceRow, SourceInsert, SourceUpdate>;
-      articles: TableDef<ArticleRow, ArticleInsert, ArticleUpdate>;
+      articles: TableDef<
+        ArticleRow,
+        ArticleInsert,
+        ArticleUpdate,
+        ArticlesRelationships
+      >;
       article_analyses: TableDef<
         ArticleAnalysisRow,
         ArticleAnalysisInsert,
-        ArticleAnalysisUpdate
+        ArticleAnalysisUpdate,
+        ArticleAnalysesRelationships
       >;
       logs: TableDef<LogRow, LogInsert, LogUpdate>;
       oxylabs_schedules: TableDef<
@@ -207,7 +248,22 @@ export type Database = {
       >;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      match_related_articles: {
+        Args: {
+          p_article_id: string;
+          p_embedding: number[];
+          p_match_count?: number;
+        };
+        Returns: {
+          id: string;
+          title: string;
+          image_url: string;
+          published_at: string;
+          source_name: string;
+        }[];
+      };
+    };
     Enums: {
       sentiment_label: SentimentLabel;
       bias_label: BiasLabel;

@@ -207,6 +207,14 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m15 6-6 6 6 6" />
+    </IconBase>
+  );
+}
+
 export function IconChevronRight(props: IconProps) {
   return (
     <IconBase {...props}>

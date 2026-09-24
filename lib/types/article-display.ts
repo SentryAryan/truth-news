@@ -38,6 +38,8 @@ export type ArticleCardProps = {
   sentimentLabel?: "positive" | "neutral" | "negative";
   framingLabel?: OverallBiasLabel;
   confidence?: number;
+  /** Above-the-fold / LCP candidate — loads eagerly with high fetch priority. */
+  priorityImage?: boolean;
 };
 
 export type SourceBias = "left" | "center" | "right";

@@ -22,3 +22,18 @@ export async function upsertArticleAnalysis(
 
   return data;
 }
+
+export async function updateArticleEmbedding(
+  articleId: string,
+  embedding: number[],
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("article_analyses")
+    .update({ embedding })
+    .eq("article_id", articleId);
+
+  if (error) {
+    throw new Error(`updateArticleEmbedding failed: ${error.message}`);
+  }
+}

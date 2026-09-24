@@ -1,0 +1,433 @@
+{
+  "info": {
+    "_postman_id": "b1eb345a-9bb9-4a97-9e10-e790b828811e",
+    "name": "truth-news",
+    "description": "# truth-news API\n\nLocal/admin API collection for the truth-news scrape → analyze → UI pipeline.\n\n## Setup\n\n1. Start the app: `npm run dev` (default `http://localhost:3000`).\n2. Open this collection → **Variables**.\n3. Set `adminSecret` to your `BIASLY_ADMIN_SECRET` from `.env.local`.\n4. Set `baseUrl` if the app is not on port 3000.\n\n## Auth\n\nAction and admin read routes require header:\n\n`x-biasly-admin-secret: {{adminSecret}}`\n\nDo **not** put the secret in the URL query string.\n\n## Watch logs\n\nScrape and analyze progress prints in the **Next.js terminal**, not only in the Postman response body.\n\n## Maintenance\n\nWhen a route is **added or changed**, update this collection (and `docs/postman/README.md`) in the same task — keep Postman as the single place to test APIs without asking for curl again.\n\n## Implemented vs planned\n\n- **Implemented:** `GET /api/sources`, `POST /api/scrape`, `POST /api/analyze`\n- **Planned (AGENTS.md, not in repo yet):** Oxylabs schedules/runs, logs, cron pipeline — folder included as stubs so they are easy to enable later.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "32577995"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "adminSecret",
+      "value": "",
+      "type": "string",
+      "description": "Value of BIASLY_ADMIN_SECRET from .env.local (never commit real secrets)."
+    },
+    {
+      "key": "cronSecret",
+      "value": "",
+      "type": "string",
+      "description": "CRON_SECRET for GET /api/cron/pipeline (Vercel injects this in prod; leave empty for local if the route skips the check)."
+    },
+    {
+      "key": "sourceId",
+      "value": "",
+      "type": "string",
+      "description": "Optional source UUID from GET /api/sources for scrape filtering."
+    },
+    {
+      "key": "articleId",
+      "value": "",
+      "type": "string",
+      "description": "Optional article UUID for targeted analyze."
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Sources (read)",
+      "description": "Admin read helpers. Use these before scraping to pick `sourceIds`.",
+      "item": [
+        {
+          "name": "List active sources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sources"
+              ]
+            },
+            "description": "## GET `/api/sources`\n\nReturns **active** news sources from Supabase (id, name, listing_url, parser_strategy, is_active).\n\n### Auth\n\n- Header `x-biasly-admin-secret` required → `401` if missing/invalid.\n\n### When to use\n\n1. Confirm sources exist before `POST /api/scrape`.\n2. Copy a source `id` into collection variable `sourceId` for scoped scrapes.\n\n### Success `200`\n\n```json\n{\n  \"sources\": [\n    {\n      \"id\": \"uuid\",\n      \"name\": \"Reuters\",\n      \"listing_url\": \"https://...\",\n      \"parser_strategy\": \"generic\",\n      \"is_active\": true\n    }\n  ]\n}\n```\n\n### Errors\n\n| Status | Body |\n|--------|------|\n| 401 | `{ \"error\": \"Unauthorized\" }` |\n| 500 | `{ \"error\": \"...\" }` |\n\n### Notes\n\n- Read-only; does not scrape or mutate pipeline state.\n- Inactive sources are omitted."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Pipeline (actions)",
+      "description": "Mutating admin routes. Prefer scrape → analyze. Watch the Next.js terminal for progress.",
+      "item": [
+        {
+          "name": "Scrape (all active sources)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limitPerSource\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scrape",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scrape"
+              ]
+            },
+            "description": "## POST `/api/scrape`\n\nRuns the **scrape-to-insert** pipeline for active sources (homepage via Oxylabs → candidate links → detail scrape → validate → insert).\n\n### Auth\n\n- Header `x-biasly-admin-secret` required.\n\n### Body (JSON, all optional)\n\n| Field | Type | Default | Meaning |\n|-------|------|---------|--------|\n| `limitPerSource` | number | `5` | Max valid articles to insert per source |\n| `sourceIds` | string[] | all active | Restrict to these source UUIDs |\n\n### This request\n\nScrapes **all active sources**, up to **5** articles each.\n\n### Success `200`\n\nTyped scrape summary (status, counts, duration, rejection reasons). Exact fields come from `runScrape` / `ScrapeResult`.\n\n### Errors\n\n| Status | Body |\n|--------|------|\n| 401 | `{ \"error\": \"Unauthorized\" }` |\n| 500 | `{ \"error\": \"...\" }` |\n\n### After scrape\n\nArticles appear on the homepage only after analysis (`analyzed_at`). Run **Analyze** next.\n\n### Timeout\n\nRoute `maxDuration` is 300s — increase Postman request timeout for large runs."
+          },
+          "response": []
+        },
+        {
+          "name": "Scrape (one source)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceIds\": [\"{{sourceId}}\"],\n  \"limitPerSource\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scrape",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scrape"
+              ]
+            },
+            "description": "## POST `/api/scrape` (scoped)\n\nSame as full scrape, but only for `sourceIds: [\"{{sourceId}}\"]`.\n\n### Setup\n\n1. Call **List active sources**.\n2. Paste a source UUID into collection variable `sourceId`.\n3. Send this request.\n\n### Body\n\n```json\n{\n  \"sourceIds\": [\"{{sourceId}}\"],\n  \"limitPerSource\": 5\n}\n```\n\nEmpty or missing `sourceId` will fail validation / insert nothing useful — set the variable first."
+          },
+          "response": []
+        },
+        {
+          "name": "Analyze (all pending)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/analyze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "analyze"
+              ]
+            },
+            "description": "## POST `/api/analyze`\n\nRuns AI analysis + embeddings for **pending** articles:\n\n- no `article_analyses` row, **or**\n- analysis exists but `embedding` is null/empty (backfill)\n\nChat model: `openrouter/free`  \nEmbedding model: `nvidia/nemotron-3-embed-1b:free` (2048-d) unless `EMBEDDING_MODEL_ID` overrides.\n\n### Auth\n\n- Header `x-biasly-admin-secret` required.\n\n### Body (JSON, all optional)\n\n| Field | Type | Default | Meaning |\n|-------|------|---------|--------|\n| `limit` | number | `ANALYSIS_MAX_PER_RUN` (default 20) | Cap articles this run |\n| `articleIds` | string[] | all pending | Analyze only these IDs |\n\n### This request\n\nEmpty body `{}` → process up to the env max of pending articles.\n\n### Success `200`\n\n```json\n{\n  \"status\": \"success\",\n  \"logId\": \"uuid\",\n  \"pendingFound\": 21,\n  \"analyzed\": 20,\n  \"failed\": 0,\n  \"skipped\": 0,\n  \"totalDurationMs\": 32913,\n  \"errors\": []\n}\n```\n\nIf more pending remain, send again (or raise `ANALYSIS_MAX_PER_RUN`).\n\n### Errors\n\n| Status | Body |\n|--------|------|\n| 401 | `{ \"error\": \"Unauthorized\" }` |\n| 500 | `{ \"error\": \"...\" }` |\n\n### Notes\n\n- Sets `analyzed_at` only after analysis **and** embedding succeed.\n- Watch OpenRouter Activity for free Nemotron embeds (not paid text-embedding-3-small).\n- Route `maxDuration` 300s — raise Postman timeout for large backfills."
+          },
+          "response": []
+        },
+        {
+          "name": "Analyze (limit / articleIds)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": 5,\n  \"articleIds\": [\"{{articleId}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/analyze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "analyze"
+              ]
+            },
+            "description": "## POST `/api/analyze` (targeted)\n\nUse for a small batch or a single article.\n\n### Body examples\n\n**Cap at 5 pending (any articles):**\n\n```json\n{ \"limit\": 5 }\n```\n\n**Specific IDs** (set collection variable `articleId`, or paste UUIDs):\n\n```json\n{\n  \"limit\": 5,\n  \"articleIds\": [\"{{articleId}}\"]\n}\n```\n\nIf `articleIds` is set, only those IDs are considered (still must be pending for analysis/embedding)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Planned (not implemented yet)",
+      "description": "Routes specified in AGENTS.md but **not present** under `app/api/` yet. Requests are disabled. When implemented, enable them and fill method/path/body to match the real handlers — keep this collection in sync.",
+      "item": [
+        {
+          "name": "GET /api/logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "logs"
+              ]
+            },
+            "description": "## GET `/api/logs` (planned)\n\nAGENTS §14 — read/status route for pipeline logs.\n\n**Status:** not implemented (`app/api/logs` missing).\n\nExpected: admin secret header; returns recent scrape/analysis log rows."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/oxylabs/schedules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "schedules"
+              ]
+            },
+            "description": "## POST `/api/oxylabs/schedules` (planned)\n\nSync / create Oxylabs Scheduler jobs for active source homepages (AGENTS §18).\n\n**Status:** not implemented.\n\nOne-time (or re-sync) setup; separate from Vercel Cron."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/oxylabs/schedules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "schedules"
+              ]
+            },
+            "description": "## GET `/api/oxylabs/schedules` (planned)\n\nList stored Oxylabs schedule rows from Supabase.\n\n**Status:** not implemented."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/oxylabs/runs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "runs"
+              ]
+            },
+            "description": "## GET `/api/oxylabs/runs` (planned)\n\nRead status of Oxylabs schedule runs (prefer `/runs` over `/jobs` per AGENTS §18).\n\n**Status:** not implemented."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/oxylabs/scheduled-results/process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/scheduled-results/process",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "scheduled-results",
+                "process"
+              ]
+            },
+            "description": "## POST `/api/oxylabs/scheduled-results/process` (planned)\n\nManually process completed Oxylabs scheduled homepage results through the scrape-to-insert pipeline.\n\n**Status:** not implemented.\n\nAuth: `x-biasly-admin-secret` (not cron secret)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/cron/pipeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cronSecret}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cron/pipeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "pipeline"
+              ]
+            },
+            "description": "## GET `/api/cron/pipeline` (planned)\n\nVercel Cron hourly pipeline: process scheduled results, then analyze pending articles.\n\n**Status:** not implemented.\n\n### Auth\n\n- Production: `Authorization: Bearer {{cronSecret}}` (`CRON_SECRET`, injected by Vercel).\n- Local: secret check may be skipped per AGENTS §18 — confirm when the route lands.\n- Do **not** use `BIASLY_ADMIN_SECRET` for this route.\n\nInternal only; not for browsers/users."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
