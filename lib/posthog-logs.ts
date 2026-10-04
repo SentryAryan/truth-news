@@ -6,7 +6,15 @@ import { posthogLoggerProvider } from "@/instrumentation";
 import type { LogStatus } from "@/lib/supabase/types";
 
 type PipelineLog = {
-  event: "analysis_run_completed" | "analysis_run_failed" | "scrape_run_completed" | "scrape_run_failed";
+  event:
+    | "analysis_run_completed"
+    | "analysis_run_failed"
+    | "scrape_run_completed"
+    | "scrape_run_failed"
+    | "scheduled_pipeline_completed"
+    | "scheduled_pipeline_failed"
+    | "schedule_sync_completed"
+    | "schedule_sync_failed";
   status: LogStatus;
   durationMs?: number;
   processedCount?: number;

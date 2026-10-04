@@ -22,27 +22,31 @@ Watch the **Next.js terminal** for scrape and analyze progress logs.
 | 2. Pipeline | Scrape (one source) | `POST` | `/api/scrape` |
 | 2. Pipeline | Analyze (all pending) | `POST` | `/api/analyze` |
 | 2. Pipeline | Analyze (limit / articleIds) | `POST` | `/api/analyze` |
+| 3. Oxylabs scheduler | Sync schedules | `POST` | `/api/oxylabs/schedules` |
+| 3. Oxylabs scheduler | List schedules | `GET` | `/api/oxylabs/schedules` |
+| 3. Oxylabs scheduler | List runs | `GET` | `/api/oxylabs/runs` |
+| 3. Oxylabs scheduler | Process scheduled results | `POST` | `/api/oxylabs/scheduled-results/process` |
+| 3. Oxylabs scheduler | Cron pipeline | `GET` | `/api/cron/pipeline` |
+
+Scheduler and pipeline action routes use `x-biasly-admin-secret`. `GET /api/cron/pipeline` uses `Authorization: Bearer {{cronSecret}}` in production. Local `next dev` skips that check. Do not put `CRON_SECRET` in `.env.local`.
 
 Each request description in Postman covers auth, body, success shape, and errors.
 
 ## Typical flow
 
-1. **List active sources** → copy a source `id` into `sourceId` if you want a scoped scrape  
-2. **Scrape** (all or one source)  
-3. **Analyze (all pending)** — repeat if `pendingFound` > `analyzed` (capped by `ANALYSIS_MAX_PER_RUN`)  
-4. Open `/` and `/news/[id]` in the browser
+1. **List active sources** → copy a source `id` into `sourceId` if you want a scoped scrape
+2. **Scrape** (all or one source) or **POST /api/oxylabs/schedules** once to register hourly homepage jobs
+3. After the top of an hour, **Process scheduled results** (or **Cron pipeline**, which also analyzes)
+4. **Analyze (all pending)** — repeat if `pendingFound` > `analyzed` (capped by `ANALYSIS_MAX_PER_RUN`)
+5. Open `/` and `/news/[id]` in the browser
 
-## Planned stubs (not in `app/api/` yet)
+Creating Oxylabs schedules and deploying `vercel.json` (`15 * * * *`) are two separate one-time steps. Hourly Vercel Cron needs a plan that allows hourly schedules.
 
-Folder **3. Planned** documents AGENTS.md routes for later:
+## Planned stubs
+
+Folder **4. Planned** documents AGENTS.md routes that are not implemented yet:
 
 - `GET /api/logs`
-- `POST` / `GET /api/oxylabs/schedules`
-- `GET /api/oxylabs/runs`
-- `POST /api/oxylabs/scheduled-results/process`
-- `GET /api/cron/pipeline` (uses `CRON_SECRET`, not admin secret)
-
-Enable and flesh these out when the handlers ship.
 
 ## Maintenance rule
 

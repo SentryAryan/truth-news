@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b1eb345a-9bb9-4a97-9e10-e790b828811e",
     "name": "truth-news",
-    "description": "# truth-news API\n\nLocal/admin API collection for the truth-news scrape → analyze → UI pipeline.\n\n## Setup\n\n1. Start the app: `npm run dev` (default `http://localhost:3000`).\n2. Open this collection → **Variables**.\n3. Set `adminSecret` to your `BIASLY_ADMIN_SECRET` from `.env.local`.\n4. Set `baseUrl` if the app is not on port 3000.\n\n## Auth\n\nAction and admin read routes require header:\n\n`x-biasly-admin-secret: {{adminSecret}}`\n\nDo **not** put the secret in the URL query string.\n\n## Watch logs\n\nScrape and analyze progress prints in the **Next.js terminal**, not only in the Postman response body.\n\n## Maintenance\n\nWhen a route is **added or changed**, update this collection (and `docs/postman/README.md`) in the same task — keep Postman as the single place to test APIs without asking for curl again.\n\n## Implemented vs planned\n\n- **Implemented:** `GET /api/sources`, `POST /api/scrape`, `POST /api/analyze`\n- **Planned (AGENTS.md, not in repo yet):** Oxylabs schedules/runs, logs, cron pipeline — folder included as stubs so they are easy to enable later.",
+    "description": "# truth-news API\n\nLocal/admin API collection for the truth-news scrape → analyze → UI pipeline.\n\n## Setup\n\n1. Start the app: `npm run dev` (default `http://localhost:3000`).\n2. Open this collection → **Variables**.\n3. Set `adminSecret` to your `BIASLY_ADMIN_SECRET` from `.env.local`.\n4. Set `baseUrl` if the app is not on port 3000.\n\n## Auth\n\nAction and admin read routes require header:\n\n`x-biasly-admin-secret: {{adminSecret}}`\n\nDo **not** put the secret in the URL query string.\n\n## Watch logs\n\nScrape and analyze progress prints in the **Next.js terminal**, not only in the Postman response body.\n\n## Maintenance\n\nWhen a route is **added or changed**, update this collection (and `docs/postman/README.md`) in the same task — keep Postman as the single place to test APIs without asking for curl again.\n\n## Implemented vs planned\n\n- **Implemented:** `GET /api/sources`, `POST /api/scrape`, `POST /api/analyze`, Oxylabs schedules/runs, scheduled-result processing, `GET /api/cron/pipeline`\n- **Planned (AGENTS.md, not in repo yet):** `GET /api/logs`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "32577995"
   },
@@ -232,8 +232,145 @@
       ]
     },
     {
-      "name": "3. Planned (not implemented yet)",
-      "description": "Routes specified in AGENTS.md but **not present** under `app/api/` yet. Requests are disabled. When implemented, enable them and fill method/path/body to match the real handlers — keep this collection in sync.",
+      "name": "3. Oxylabs scheduler",
+      "description": "One-time schedule sync, manual processing of completed homepage jobs, and the hourly cron pipeline. Watch the Next.js terminal.",
+      "item": [
+        {
+          "name": "POST /api/oxylabs/schedules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "schedules"
+              ]
+            },
+            "description": "## POST `/api/oxylabs/schedules`\n\nCreate one hourly Oxylabs schedule per active source homepage, reuse schedules that already exist, and deactivate Oxylabs schedules that are not stored in Supabase.\n\n### Auth\n\n`x-biasly-admin-secret` required → `401` if missing/invalid.\n\n### Success `200`\n\n```json\n{\n  \"sources\": 3,\n  \"created\": 3,\n  \"reused\": 0,\n  \"reactivated\": 0,\n  \"deactivated\": 0,\n  \"deactivatedOrphans\": 0,\n  \"scheduleIds\": [\"168110763619310929\"],\n  \"errors\": []\n}\n```\n\nA second call should report `reused` instead of `created`.\n\nThis is a one-time setup. It does not start Vercel Cron."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/oxylabs/schedules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "schedules"
+              ]
+            },
+            "description": "## GET `/api/oxylabs/schedules`\n\nList stored `oxylabs_schedules` rows. Admin secret required."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/oxylabs/runs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "runs"
+              ]
+            },
+            "description": "## GET `/api/oxylabs/runs`\n\nList recent `oxylabs_schedule_runs` rows (newest first). Admin secret required."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/oxylabs/scheduled-results/process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-biasly-admin-secret",
+                "value": "{{adminSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/oxylabs/scheduled-results/process",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "oxylabs",
+                "scheduled-results",
+                "process"
+              ]
+            },
+            "description": "## POST `/api/oxylabs/scheduled-results/process`\n\nFetch the newest **done** homepage job per active schedule and run the shared scrape-to-insert pipeline. Skips run ids already stored.\n\nAuth: `x-biasly-admin-secret`. Response shape matches `POST /api/scrape`.\n\nRun this after the top of an hour, once Oxylabs has finished the scheduled homepage jobs."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/cron/pipeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cronSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cron/pipeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "pipeline"
+              ]
+            },
+            "description": "## GET `/api/cron/pipeline`\n\nRuns scheduled-result processing, then AI analysis. Analysis still runs when processing throws.\n\n### Auth\n\n- Production: `Authorization: Bearer {{cronSecret}}` (`CRON_SECRET`, injected by Vercel). Missing or wrong → `401`.\n- Local `next dev`: the secret check is skipped.\n- Do **not** use `BIASLY_ADMIN_SECRET` for this route.\n\nVercel calls this at `15 * * * *` via `vercel.json`. Hourly cron needs a Vercel plan that allows hourly schedules."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Planned (not implemented yet)",
+      "description": "Routes specified in AGENTS.md but **not present** under `app/api/` yet.",
       "item": [
         {
           "name": "GET /api/logs",
@@ -258,172 +395,6 @@
               ]
             },
             "description": "## GET `/api/logs` (planned)\n\nAGENTS §14 — read/status route for pipeline logs.\n\n**Status:** not implemented (`app/api/logs` missing).\n\nExpected: admin secret header; returns recent scrape/analysis log rows."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/oxylabs/schedules",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-biasly-admin-secret",
-                "value": "{{adminSecret}}",
-                "type": "text",
-                "disabled": true
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text",
-                "disabled": true
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/oxylabs/schedules",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "oxylabs",
-                "schedules"
-              ]
-            },
-            "description": "## POST `/api/oxylabs/schedules` (planned)\n\nSync / create Oxylabs Scheduler jobs for active source homepages (AGENTS §18).\n\n**Status:** not implemented.\n\nOne-time (or re-sync) setup; separate from Vercel Cron."
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/oxylabs/schedules",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-biasly-admin-secret",
-                "value": "{{adminSecret}}",
-                "type": "text",
-                "disabled": true
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/oxylabs/schedules",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "oxylabs",
-                "schedules"
-              ]
-            },
-            "description": "## GET `/api/oxylabs/schedules` (planned)\n\nList stored Oxylabs schedule rows from Supabase.\n\n**Status:** not implemented."
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/oxylabs/runs",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-biasly-admin-secret",
-                "value": "{{adminSecret}}",
-                "type": "text",
-                "disabled": true
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/oxylabs/runs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "oxylabs",
-                "runs"
-              ]
-            },
-            "description": "## GET `/api/oxylabs/runs` (planned)\n\nRead status of Oxylabs schedule runs (prefer `/runs` over `/jobs` per AGENTS §18).\n\n**Status:** not implemented."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/oxylabs/scheduled-results/process",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-biasly-admin-secret",
-                "value": "{{adminSecret}}",
-                "type": "text",
-                "disabled": true
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text",
-                "disabled": true
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/oxylabs/scheduled-results/process",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "oxylabs",
-                "scheduled-results",
-                "process"
-              ]
-            },
-            "description": "## POST `/api/oxylabs/scheduled-results/process` (planned)\n\nManually process completed Oxylabs scheduled homepage results through the scrape-to-insert pipeline.\n\n**Status:** not implemented.\n\nAuth: `x-biasly-admin-secret` (not cron secret)."
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/cron/pipeline",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{cronSecret}}",
-                "type": "text",
-                "disabled": true
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/cron/pipeline",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "cron",
-                "pipeline"
-              ]
-            },
-            "description": "## GET `/api/cron/pipeline` (planned)\n\nVercel Cron hourly pipeline: process scheduled results, then analyze pending articles.\n\n**Status:** not implemented.\n\n### Auth\n\n- Production: `Authorization: Bearer {{cronSecret}}` (`CRON_SECRET`, injected by Vercel).\n- Local: secret check may be skipped per AGENTS §18 — confirm when the route lands.\n- Do **not** use `BIASLY_ADMIN_SECRET` for this route.\n\nInternal only; not for browsers/users."
           },
           "response": []
         }
