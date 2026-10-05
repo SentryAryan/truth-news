@@ -1,5 +1,8 @@
 import { isValidAdminSecret } from "@/lib/auth/admin-secret";
-import { syncSchedules } from "@/lib/oxylabs/sync-schedules";
+import {
+    applyScheduledPipeline,
+    type SyncSummary,
+} from "@/lib/oxylabs/sync-schedules";
 import {
     emitPostHogPipelineLog,
     flushPostHogLogs,
@@ -9,6 +12,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+function syncStatus(result: SyncSummary): "success" | "partial_success" | "failed" {
+  if (result.errors.length === 0) {
+    return "success";
+  }
+  const progressed =
+    result.created +
+    result.reused +
+    result.reactivated +
+    result.replaced +
+    result.deactivated +
+    result.deactivatedOrphans;
+  return progressed > 0 ? "partial_success" : "failed";
+}
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("x-biasly-admin-secret");
@@ -33,16 +50,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await syncSchedules();
+    const result = await applyScheduledPipeline();
     emitPostHogPipelineLog({
       event: "schedule_sync_completed",
-      status:
-        result.errors.length === 0
-          ? "success"
-          : result.created + result.reused + result.reactivated > 0
-            ? "partial_success"
-            : "failed",
-      processedCount: result.created + result.reactivated,
+      status: syncStatus(result),
+      processedCount: result.created + result.reactivated + result.replaced,
       failedCount: result.errors.length,
     });
     return NextResponse.json(result);

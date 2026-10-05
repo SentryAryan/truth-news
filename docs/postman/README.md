@@ -30,17 +30,19 @@ Watch the **Next.js terminal** for scrape and analyze progress logs.
 
 Scheduler and pipeline action routes use `x-biasly-admin-secret`. `GET /api/cron/pipeline` uses `Authorization: Bearer {{cronSecret}}` in production. Local `next dev` skips that check. Do not put `CRON_SECRET` in `.env.local`.
 
+`SCHEDULED_PIPELINE_ENABLED` is unset or `on` by default. Set it to `off` on Vercel, redeploy, then **Sync schedules** to deactivate Oxylabs immediately. The next cron call then returns `skipped: true` and does not scrape or analyze. Set it back to `on` and sync again before a demo. The next Oxylabs homepage fetch is 06:00 UTC; Vercel cron may run any time from 08:00 to 08:59 UTC.
+
 Each request description in Postman covers auth, body, success shape, and errors.
 
 ## Typical flow
 
 1. **List active sources** → copy a source `id` into `sourceId` if you want a scoped scrape
-2. **Scrape** (all or one source) or **POST /api/oxylabs/schedules** once to register hourly homepage jobs
-3. After the top of an hour, **Process scheduled results** (or **Cron pipeline**, which also analyzes)
+2. **Scrape** (all or one source) or **POST /api/oxylabs/schedules** once to register daily homepage jobs (`0 6 * * *`)
+3. After 06:00 UTC, **Process scheduled results** (or **Cron pipeline**, which also analyzes)
 4. **Analyze (all pending)** — repeat if `pendingFound` > `analyzed` (capped by `ANALYSIS_MAX_PER_RUN`)
 5. Open `/` and `/news/[id]` in the browser
 
-Creating Oxylabs schedules and deploying `vercel.json` (`15 * * * *`) are two separate one-time steps. Hourly Vercel Cron needs a plan that allows hourly schedules.
+Creating Oxylabs schedules and deploying `vercel.json` (`15 8 * * *`) are two separate one-time steps. On Hobby, that cron may run any time during the 08:00 UTC hour.
 
 ## Planned stubs
 

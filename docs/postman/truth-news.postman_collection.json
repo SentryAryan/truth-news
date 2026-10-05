@@ -257,7 +257,7 @@
                 "schedules"
               ]
             },
-            "description": "## POST `/api/oxylabs/schedules`\n\nCreate one hourly Oxylabs schedule per active source homepage, reuse schedules that already exist, and deactivate Oxylabs schedules that are not stored in Supabase.\n\n### Auth\n\n`x-biasly-admin-secret` required → `401` if missing/invalid.\n\n### Success `200`\n\n```json\n{\n  \"sources\": 3,\n  \"created\": 3,\n  \"reused\": 0,\n  \"reactivated\": 0,\n  \"deactivated\": 0,\n  \"deactivatedOrphans\": 0,\n  \"scheduleIds\": [\"168110763619310929\"],\n  \"errors\": []\n}\n```\n\nA second call should report `reused` instead of `created`.\n\nThis is a one-time setup. It does not start Vercel Cron."
+            "description": "## POST `/api/oxylabs/schedules`\n\nWhen `SCHEDULED_PIPELINE_ENABLED` is unset or `on`, create one daily Oxylabs schedule (`0 6 * * *`, 06:00 UTC) per active source homepage. Reuse a schedule that already has that cron. Replace a schedule whose cron differs (deactivate the old id, store the new id). Deactivate Oxylabs schedules that are not stored in Supabase.\n\nWhen `SCHEDULED_PIPELINE_ENABLED=off`, deactivate every stored schedule and any Oxylabs schedule id that is not in the database. No homepage jobs are created.\n\n### Auth\n\n`x-biasly-admin-secret` required → `401` if missing/invalid.\n\n### Success `200`\n\n```json\n{\n  \"sources\": 3,\n  \"created\": 0,\n  \"reused\": 0,\n  \"reactivated\": 0,\n  \"replaced\": 3,\n  \"deactivated\": 0,\n  \"deactivatedOrphans\": 0,\n  \"scheduleIds\": [\"168110763619310929\"],\n  \"errors\": []\n}\n```\n\nA later call with the flag on should report `reused` instead of `created` or `replaced`.\n\nChanging the env var does not stop Oxylabs until this request runs, or until the next cron invocation. This route does not start Vercel Cron."
           },
           "response": []
         },
@@ -336,7 +336,7 @@
                 "process"
               ]
             },
-            "description": "## POST `/api/oxylabs/scheduled-results/process`\n\nFetch the newest **done** homepage job per active schedule and run the shared scrape-to-insert pipeline. Skips run ids already stored.\n\nAuth: `x-biasly-admin-secret`. Response shape matches `POST /api/scrape`.\n\nRun this after the top of an hour, once Oxylabs has finished the scheduled homepage jobs."
+            "description": "## POST `/api/oxylabs/scheduled-results/process`\n\nFetch the newest **done** homepage job per active schedule and run the shared scrape-to-insert pipeline. Skips run ids already stored. Does not analyze.\n\nAuth: `x-biasly-admin-secret`. Response shape matches `POST /api/scrape`.\n\nRun this after 06:00 UTC, once the daily Oxylabs homepage jobs have finished. This route stays available when `SCHEDULED_PIPELINE_ENABLED=off`, but deactivated schedules have no new homepage to read."
           },
           "response": []
         },
@@ -362,7 +362,7 @@
                 "pipeline"
               ]
             },
-            "description": "## GET `/api/cron/pipeline`\n\nRuns scheduled-result processing, then AI analysis. Analysis still runs when processing throws.\n\n### Auth\n\n- Production: `Authorization: Bearer {{cronSecret}}` (`CRON_SECRET`, injected by Vercel). Missing or wrong → `401`.\n- Local `next dev`: the secret check is skipped.\n- Do **not** use `BIASLY_ADMIN_SECRET` for this route.\n\nVercel calls this at `15 * * * *` via `vercel.json`. Hourly cron needs a Vercel plan that allows hourly schedules."
+            "description": "## GET `/api/cron/pipeline`\n\nWhen `SCHEDULED_PIPELINE_ENABLED` is unset or `on`: sync daily Oxylabs schedules, then run scheduled-result processing, then AI analysis. Analysis still runs when processing throws.\n\nWhen `SCHEDULED_PIPELINE_ENABLED=off`: deactivate Oxylabs schedules and return `200` without scraping or analysis:\n\n```json\n{\n  \"skipped\": true,\n  \"reason\": \"scheduled pipeline disabled\",\n  \"scheduleSync\": {},\n  \"scheduleSyncError\": null\n}\n```\n\n### Auth\n\n- Production: `Authorization: Bearer {{cronSecret}}` (`CRON_SECRET`, injected by Vercel). Missing or wrong → `401`.\n- Local `next dev`: the secret check is skipped.\n- Do **not** use `BIASLY_ADMIN_SECRET` for this route.\n\nVercel calls this at `15 8 * * *` via `vercel.json`. On Hobby that may run any time from 08:00 to 08:59 UTC, after the 06:00 UTC Oxylabs homepage fetch."
           },
           "response": []
         }

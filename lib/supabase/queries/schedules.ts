@@ -39,6 +39,21 @@ export async function insertSchedule(
   return data;
 }
 
+export async function updateScheduleOxylabsId(
+  id: string,
+  oxylabsScheduleId: string,
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("oxylabs_schedules")
+    .update({ oxylabs_schedule_id: oxylabsScheduleId, is_active: true })
+    .eq("id", id);
+
+  if (error) {
+    throw new Error(`updateScheduleOxylabsId failed: ${error.message}`);
+  }
+}
+
 export async function setScheduleRowActive(
   id: string,
   isActive: boolean,

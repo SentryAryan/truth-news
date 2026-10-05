@@ -8,8 +8,18 @@ import {
 
 const DATA_BASE = "https://data.oxylabs.io";
 
-export const OXYLABS_HOURLY_CRON = "0 * * * *";
+/**
+ * 06:00 UTC daily. Hobby cron may fire any time in the 08:00 UTC hour,
+ * so this homepage is finished before Vercel reads it.
+ */
+export const OXYLABS_DAILY_CRON = "0 6 * * *";
 export const OXYLABS_SCHEDULE_END_TIME = "2035-12-31 23:59:59";
+
+export type OxylabsScheduleInfo = {
+  scheduleId: string;
+  cron: string;
+  active: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,7 +62,7 @@ export async function createSchedule(listingUrl: string): Promise<string> {
   const { status, raw } = await dataRequest("/v1/schedules", {
     method: "POST",
     body: JSON.stringify({
-      cron: OXYLABS_HOURLY_CRON,
+      cron: OXYLABS_DAILY_CRON,
       items: [{ source: "universal", url: listingUrl }],
       end_time: OXYLABS_SCHEDULE_END_TIME,
     }),
@@ -75,6 +85,30 @@ export async function listScheduleIds(): Promise<string[]> {
     throw new Error("Oxylabs list schedules response missing schedules");
   }
   return parsed.schedules.map((id) => oxylabsIdToString(id));
+}
+
+export async function getSchedule(
+  scheduleId: string,
+): Promise<OxylabsScheduleInfo> {
+  const { status, raw } = await dataRequest(`/v1/schedules/${scheduleId}`, {
+    method: "GET",
+  });
+  assertOk(status, "get schedule");
+
+  const parsed = parseOxylabsJson(raw);
+  if (
+    !isRecord(parsed) ||
+    typeof parsed.cron !== "string" ||
+    typeof parsed.active !== "boolean"
+  ) {
+    throw new Error("Oxylabs get schedule response missing cron or active");
+  }
+
+  return {
+    scheduleId: oxylabsIdToString(parsed.schedule_id),
+    cron: parsed.cron,
+    active: parsed.active,
+  };
 }
 
 export async function getScheduleRuns(

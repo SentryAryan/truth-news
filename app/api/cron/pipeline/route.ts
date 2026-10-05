@@ -1,4 +1,9 @@
 import { isCronRequestAuthorized } from "@/lib/auth/cron-secret";
+import { isScheduledPipelineEnabled } from "@/lib/oxylabs/pipeline-enabled";
+import {
+    applyScheduledPipeline,
+    type SyncSummary,
+} from "@/lib/oxylabs/sync-schedules";
 import { runAnalysis, type AnalysisResult } from "@/lib/pipeline/analyze";
 import { processScheduledResults } from "@/lib/pipeline/scheduled-results";
 import type { ScrapeResult } from "@/lib/pipeline/scrape";
@@ -24,6 +29,25 @@ export async function GET(req: NextRequest) {
     })
   ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let scheduleSync: SyncSummary | null = null;
+  let scheduleSyncError: string | null = null;
+  try {
+    scheduleSync = await applyScheduledPipeline();
+  } catch (err) {
+    scheduleSyncError = errorMessage(err, "Schedule sync failed");
+    console.error("[cron/pipeline] applyScheduledPipeline failed:", scheduleSyncError);
+  }
+
+  if (!isScheduledPipelineEnabled()) {
+    console.log("[cron/pipeline] skipped — scheduled pipeline disabled");
+    return NextResponse.json({
+      skipped: true,
+      reason: "scheduled pipeline disabled",
+      scheduleSync,
+      scheduleSyncError,
+    });
   }
 
   let processing: ScrapeResult | null = null;
@@ -73,6 +97,9 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    skipped: false,
+    scheduleSync,
+    scheduleSyncError,
     processing,
     processingError,
     analysis,
