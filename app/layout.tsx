@@ -1,8 +1,10 @@
 import { ClerkThemeProvider } from "@/components/theme/clerk-theme-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { THEME_COLOR_COOKIE, htmlClassForColorCookie } from "@/lib/theme";
+import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme-bootstrap-script";
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
-import Script from "next/script";
+import { cookies } from "next/headers";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -29,16 +31,24 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const cookieStore = await cookies();
+  const themeClass = htmlClassForColorCookie(
+    cookieStore.get(THEME_COLOR_COOKIE)?.value,
+  );
+
   return (
     <html
       lang="en"
-      className={`${poppins.variable} h-full antialiased`}
+      className={[poppins.variable, "h-full antialiased", themeClass]
+        .filter(Boolean)
+        .join(" ")}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
-        {/* beforeInteractive avoids React 19 raw <script> warnings and still runs pre-hydration */}
-        <Script src="/theme-init.js" strategy="beforeInteractive" />
         <ThemeProvider>
           <ClerkThemeProvider>{children}</ClerkThemeProvider>
         </ThemeProvider>

@@ -8,7 +8,9 @@ Your job is to understand the request, use the right project skills, create a cl
 
 # This is NOT the Next.js you know
 
-This version has breaking changes â€” APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
 
@@ -207,7 +209,7 @@ Each article analysis should store:
 
 The `embedding vector(2048)` column is added to `article_analyses` in section 20 after pgvector is enabled. Do not include it in the initial schema.
 
-When any of these fields are added or changed, update `supabase/schema.sql`, `lib/supabase/types.ts`, and run the corresponding ALTER SQL in Supabase Dashboard â†’ SQL Editor before testing.
+When any of these fields are added or changed, add a file under `supabase/migrations/`, update `supabase/schema.sql` and `lib/supabase/types.ts`, then apply it with `npm run db:push` before testing. See `supabase/README.md`.
 
 - name
 - homepage URL (listing_url)
@@ -712,13 +714,13 @@ After implementation, run `typecheck` and `lint` at minimum. Add `build` when ro
 - For all UI, visual, styling, or page-layout work, treat the truth-news design-system prompts as source of truth across sessions: `docs/prompts/001b-design-system-primitives.md`, then `001-design-system-theme.md` and `001c-dark-mode-theme-and-showcase.md`, with task mockups under `docs/prompt-imgs/`.
 - Prefer hand-rolled Tailwind primitives over inventing parallel UI kits; reuse existing components (`Button`, `Chip`, `BiasMeter`, `Logo`, `Container`, `ThemeSwitcher`, `ArticleCard`) and semantic tokens so light/dark stay aligned.
 - Theme control should be an industry-style light / dark / system dropdown with icons; place it in the site header left of Subscribe and Login, not in the uppermost top strip.
-- Site chrome such as the date/location top strip must remain readable in dark mode; avoid low-contrast dark-on-dark treatments.
+- Site chrome such as the date/location top strip must remain readable in dark mode; avoid low-contrast dark-on-dark treatments. Opening an article must be client-side navigation so dark and system theme do not flash a light page.
 - On small screens, prefer industry-standard responsive tightening (type, spacing, stacking) when the home page feels cluttered; on tablet and below, collapse the site header nav into a hamburger menu when items clutter.
 - When executing an attached plan, do not edit the plan file; use the existing todos and mark them as in progress rather than recreating them.
 - Clerk components (UserButton, profile card, and other auth UI) must follow the app light/dark theme, not Clerk's default appearance alone.
 - Prefer header auth-slot UX that avoids an empty flash while Clerk hydrates (skeleton/placeholder) so the profile control does not appear long after article content.
-- Implementation prompts always go in `docs/prompts/` only; never create another `prompts/` folder elsewhere in the repo.
-- When required Supabase schema/migration SQL is part of a feature, apply it via Supabase tooling when asked rather than leaving Dashboard SQL as a manual user step.
+- Leave `SCHEDULED_PIPELINE_ENABLED` off except when demonstrating the project, so daily Oxylabs and OpenRouter quota stays unused on this hobby app.
+- Apply schema changes with files under `supabase/migrations/` and `npm run db:push`. Do not ask the user to paste SQL in the Supabase SQL editor; writes do not create tables automatically.
 - Prefer server-applied homepage pagination and filters over raising hard list caps or client-only paging; place filters (shadcn `Select`, not native `<select>`) top-right beside Top news; keep pagination only at the bottom of the grid (no bottom filters); hide pagination when `totalPages <= 1`; shadcn pagination is acceptable. Homepage searchParam navigations need client pending skeletons (route `loading.tsx` alone is insufficient for soft filter/page changes); the first above-fold feed image should use eager loading for LCP.
 - Prefer Postman (`docs/postman/truth-news.postman_collection.json`) for local API testing over repeating curl; keep request bodies as JSON language where a body is required; after any task that adds or changes an API route, update that collection and `docs/postman/README.md` in the same change. When sharing curl on Windows, use `curl.exe` (not PowerShell's `curl` alias).
 
@@ -731,7 +733,7 @@ After implementation, run `typecheck` and `lint` at minimum. Add `build` when ro
 - Dark tokens are derived to mirror light semantic roles while keeping Left/Right bias identity; the `/design-system` route is the dedicated token/primitives/theme showcase.
 - Homepage and chrome live under `app/(site)/` with shared layout pieces in `components/layout/` (`TopBar`, `SiteHeader`, `SiteFooter`); brand marks for light/dark chrome live under `public/icons/project/` (`truth-news-favicon-black.png` for light mode, `truth-news-favicon-white.png` for dark mode).
 - UI and feature implementation prompts live under `docs/prompts/`; mockups under `docs/prompt-imgs/` (for example `004-home-page-ui.md`, `02-homepage.png`, `03-news-details-page.png`).
-- Auth model: the news feed/home is public; news details (`/news/[id]`) are gated behind Clerk sign-in.
+- Auth model: the news feed/home is public; news details (`/news/[id]`) are gated behind Clerk sign-in. Signed-in users save articles in `saved_articles` (unique on Clerk user and article; service-role writes only). A Saved nav item, including the mobile menu, and a Saved page list them. The details share control opens a modal with platform icons and working social share links.
 - AI analysis uses Vercel AI SDK via OpenRouter (`OPENROUTER_API_KEY`); chat analysis model is always `openrouter/free`. Embeddings use `nvidia/nemotron-3-embed-1b:free` (2048-dim) via OpenRouter AI SDK `embed()` and store in `article_analyses.embedding`; Related Articles requires that column non-null. OpenRouter has no free-embeddings router analogous to `openrouter/free` — pin a concrete embedding model id (override with `EMBEDDING_MODEL_ID`); never use `openrouter/free` for embeddings.
 - `ANALYSIS_BATCH_SIZE` is the per-batch chunk size; `ANALYSIS_MAX_PER_RUN` caps how many pending articles a single `POST /api/analyze` run processes. Full pending articles cost at least two OpenRouter calls (chat analysis + embedding; analysis may retry once); embedding-only backfill is one call. Pending is one interleaved list of missing analysis rows and rows with null/empty `embedding` (not a two-phase pass). On OpenRouter free-model rate limits, abort remaining articles without further retries, count unprocessed as `skipped`, and surface `abortedForRateLimit`.
 - Scraped article image CDNs must be allowlisted in `next.config` `images.remotePatterns`; missing hosts (e.g. BBC `ichef.bbci.co.uk`) cause homepage `next/image` 500s.

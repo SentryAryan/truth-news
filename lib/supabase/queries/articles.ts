@@ -37,7 +37,7 @@ function isMissingRelationError(message: string): boolean {
   );
 }
 
-type JoinedArticleRow = Article & {
+export type JoinedArticleRow = Article & {
   sources: Source | Source[] | null;
   article_analyses: ArticleAnalysis | ArticleAnalysis[] | null;
 };
@@ -138,6 +138,12 @@ function mapToHomeArticle(row: JoinedArticleRow): HomeArticle | null {
     framingLabel: toOverallBiasLabel(analysis.bias_label),
     confidence: analysis.confidence,
   };
+}
+
+export function mapJoinedArticleToHomeArticle(
+  row: JoinedArticleRow,
+): HomeArticle | null {
+  return mapToHomeArticle(row);
 }
 
 function mapToDetailArticle(row: JoinedArticleRow): DetailArticle | null {

@@ -1,11 +1,13 @@
 /**
  * Blocking FOUC theme bootstrap.
- * Loaded from app/layout.tsx via next/script strategy="beforeInteractive".
- * Keep behavior in sync with lib/theme.ts and lib/theme-bootstrap-script.ts.
+ * The app inlines lib/theme-bootstrap-script.ts. This file stays in sync for
+ * any direct /theme-init.js request.
+ * Keep behavior in sync with lib/theme-bootstrap-script.ts and lib/theme.ts.
  */
 (function () {
   try {
     var k = "truth-news-theme";
+    var c = "truth-news-color";
     var m = localStorage.getItem(k);
     if (m !== "light" && m !== "dark" && m !== "system") {
       m = "system";
@@ -20,6 +22,13 @@
     } else {
       r.classList.remove("dark");
     }
+    var secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie =
+      c +
+      "=" +
+      (dark ? "dark" : "light") +
+      "; Path=/; Max-Age=31536000; SameSite=Lax" +
+      secure;
   } catch {
     /* ignore private-mode / storage errors */
   }

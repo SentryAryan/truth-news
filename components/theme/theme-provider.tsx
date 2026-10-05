@@ -10,10 +10,12 @@ import {
     type ResolvedTheme,
     type ThemeMode,
 } from "@/lib/theme";
+import { usePathname } from "next/navigation";
 import {
     createContext,
     useCallback,
     useContext,
+    useLayoutEffect,
     useMemo,
     useSyncExternalStore,
     type ReactNode,
@@ -85,6 +87,7 @@ function getSystemServerSnapshot(): ResolvedTheme {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const theme = useSyncExternalStore(
     subscribeToTheme,
     getThemeSnapshot,
@@ -96,6 +99,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     getSystemServerSnapshot,
   );
   const resolvedTheme = resolveTheme(theme, systemPref);
+
+  useLayoutEffect(() => {
+    applyResolvedTheme(resolveTheme(readStoredTheme(), getSystemPreference()));
+  }, [pathname]);
 
   const setTheme = useCallback((mode: ThemeMode) => {
     writeStoredTheme(mode);

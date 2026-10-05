@@ -1,22 +1,19 @@
 import { BiasMeter } from "@/components/bias-meter";
 import { Container } from "@/components/container";
 import { AiSummaryCard } from "@/components/details/ai-summary-card";
+import { ArticleActions } from "@/components/details/article-actions";
 import { BiasAnalysisCard } from "@/components/details/bias-analysis-card";
 import { NewsDetailShell } from "@/components/details/news-detail-shell";
 import { RelatedStoryCard } from "@/components/details/related-story-card";
 import { SourceBreakdownCard } from "@/components/details/source-breakdown-card";
-import {
-    IconBookmark,
-    IconInfo,
-    IconMore,
-    IconShare,
-} from "@/components/icons";
+import { IconInfo, IconMore } from "@/components/icons";
 import { NewsletterBanner } from "@/components/newsletter-banner";
 import {
     getArticleEmbedding,
     getArticleWithAnalysis,
     getRelatedArticles,
 } from "@/lib/supabase/queries/articles";
+import { isArticleSaved } from "@/lib/supabase/queries/saved-articles";
 import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Image from "next/image";
@@ -48,12 +45,13 @@ export async function generateMetadata({
 }
 
 export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
-  await auth.protect();
+  const { userId } = await auth.protect();
 
   const { id } = await params;
-  const [article, embedding] = await Promise.all([
+  const [article, embedding, initiallySaved] = await Promise.all([
     getArticleWithAnalysis(id),
     getArticleEmbedding(id),
+    userId ? isArticleSaved(userId, id) : Promise.resolve(false),
   ]);
   if (!article) {
     notFound();
@@ -93,21 +91,13 @@ export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
                   <span aria-hidden="true"> | </span>
                   {article.readTime}
                 </p>
-                <div className="flex items-center gap-1 text-text-secondary">
-                  <button
-                    type="button"
-                    aria-label="Save"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-surface hover:text-text-primary"
-                  >
-                    <IconBookmark size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Share"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-surface hover:text-text-primary"
-                  >
-                    <IconShare size={18} />
-                  </button>
+                <div className="flex items-start gap-1 text-text-secondary">
+                  <ArticleActions
+                    key={article.id}
+                    articleId={article.id}
+                    title={article.title}
+                    initiallySaved={initiallySaved}
+                  />
                   <button
                     type="button"
                     aria-label="More"

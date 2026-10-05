@@ -1,13 +1,4 @@
--- truth-news canonical schema snapshot (AGENTS.md §7 + §20).
--- Apply changes with Supabase migrations (`npm run db:push`), not the SQL Editor.
--- Keep this file in sync when a migration changes the schema.
-
 create extension if not exists "pgcrypto";
-create extension if not exists vector;
-
--- ---------------------------------------------------------------------------
--- Enums
--- ---------------------------------------------------------------------------
 
 do $$ begin
   create type sentiment_label as enum ('positive', 'neutral', 'negative');
@@ -29,10 +20,6 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
--- ---------------------------------------------------------------------------
--- updated_at helper
--- ---------------------------------------------------------------------------
-
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -42,10 +29,6 @@ begin
   return new;
 end;
 $$;
-
--- ---------------------------------------------------------------------------
--- sources
--- ---------------------------------------------------------------------------
 
 create table if not exists public.sources (
   id uuid primary key default gen_random_uuid(),
@@ -62,10 +45,6 @@ drop trigger if exists sources_set_updated_at on public.sources;
 create trigger sources_set_updated_at
   before update on public.sources
   for each row execute function public.set_updated_at();
-
--- ---------------------------------------------------------------------------
--- articles
--- ---------------------------------------------------------------------------
 
 create table if not exists public.articles (
   id uuid primary key default gen_random_uuid(),
@@ -91,10 +70,6 @@ create trigger articles_set_updated_at
   before update on public.articles
   for each row execute function public.set_updated_at();
 
--- ---------------------------------------------------------------------------
--- article_analyses (+ embedding vector for §20 related articles)
--- ---------------------------------------------------------------------------
-
 create table if not exists public.article_analyses (
   id uuid primary key default gen_random_uuid(),
   article_id uuid not null unique references public.articles (id) on delete cascade,
@@ -113,62 +88,16 @@ create table if not exists public.article_analyses (
   loaded_terms text[] not null default '{}',
   disclaimer text not null,
   model text not null,
-  embedding vector(2048),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint article_analyses_percentages_sum_100
     check (left_percentage + center_percentage + right_percentage = 100)
 );
 
--- For databases created before §20 / before Nemotron 2048 migration:
-alter table public.article_analyses
-  add column if not exists embedding vector(2048);
-
--- IVFFlat/HNSW max out at 2000 dimensions in pgvector; Nemotron is 2048,
--- so Related Articles uses exact cosine distance (<=>) without an ANN index.
--- Fine for current article volume; revisit if the corpus grows very large.
-
 drop trigger if exists article_analyses_set_updated_at on public.article_analyses;
 create trigger article_analyses_set_updated_at
   before update on public.article_analyses
   for each row execute function public.set_updated_at();
-
--- Cosine similarity lookup for Related Articles (AGENTS.md §20)
-create or replace function public.match_related_articles(
-  p_article_id  uuid,
-  p_embedding   vector(2048),
-  p_match_count int default 5
-)
-returns table (
-  id           uuid,
-  title        text,
-  image_url    text,
-  published_at timestamptz,
-  source_name  text
-)
-language sql
-stable
-security invoker
-as $$
-  select
-    a.id,
-    a.title,
-    a.image_url,
-    a.published_at,
-    s.name as source_name
-  from public.article_analyses aa
-  join public.articles a on a.id = aa.article_id
-  join public.sources  s on s.id = a.source_id
-  where aa.embedding is not null
-    and a.analyzed_at is not null
-    and a.id <> p_article_id
-  order by aa.embedding <=> p_embedding
-  limit p_match_count;
-$$;
-
--- ---------------------------------------------------------------------------
--- logs (operational; service role only)
--- ---------------------------------------------------------------------------
 
 create table if not exists public.logs (
   id uuid primary key default gen_random_uuid(),
@@ -184,11 +113,6 @@ create table if not exists public.logs (
   finished_at timestamptz,
   created_at timestamptz not null default now()
 );
-
--- ---------------------------------------------------------------------------
--- oxylabs_schedules / oxylabs_schedule_runs
--- schedule IDs stored as text (JS Number loses 64-bit precision)
--- ---------------------------------------------------------------------------
 
 create table if not exists public.oxylabs_schedules (
   id uuid primary key default gen_random_uuid(),
@@ -218,32 +142,12 @@ create table if not exists public.oxylabs_schedule_runs (
 create index if not exists oxylabs_schedule_runs_schedule_id_idx
   on public.oxylabs_schedule_runs (schedule_id);
 
--- ---------------------------------------------------------------------------
--- saved_articles (per Clerk user; service-role writes only)
--- ---------------------------------------------------------------------------
-
-create table if not exists public.saved_articles (
-  id uuid primary key default gen_random_uuid(),
-  clerk_user_id text not null,
-  article_id uuid not null references public.articles (id) on delete cascade,
-  created_at timestamptz not null default now(),
-  unique (clerk_user_id, article_id)
-);
-
-create index if not exists saved_articles_user_created_idx
-  on public.saved_articles (clerk_user_id, created_at desc);
-
--- ---------------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------------
-
 alter table public.sources enable row level security;
 alter table public.articles enable row level security;
 alter table public.article_analyses enable row level security;
 alter table public.logs enable row level security;
 alter table public.oxylabs_schedules enable row level security;
 alter table public.oxylabs_schedule_runs enable row level security;
-alter table public.saved_articles enable row level security;
 
 grant select on public.sources to anon, authenticated;
 grant select on public.articles to anon, authenticated;
@@ -277,12 +181,9 @@ create policy "public can read article analyses"
     )
   );
 
--- logs / oxylabs_* / saved_articles : no public grants or policies (service role bypasses RLS)
-
 comment on table public.sources is 'News homepage sources used by the scrape pipeline';
 comment on table public.articles is 'Scraped articles; homepage shows rows with analyzed_at set';
-comment on table public.article_analyses is 'AI framing/sentiment analysis + embedding for related articles';
+comment on table public.article_analyses is 'AI framing/sentiment analysis; embedding added later';
 comment on table public.logs is 'Pipeline run logs; service-role only';
 comment on table public.oxylabs_schedules is 'Oxylabs Scheduler sync state; schedule IDs as text';
 comment on table public.oxylabs_schedule_runs is 'Processed Oxylabs schedule runs';
-comment on table public.saved_articles is 'Articles a Clerk user saved; service-role only';

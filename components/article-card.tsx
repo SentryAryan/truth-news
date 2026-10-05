@@ -4,6 +4,7 @@ import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/cn";
 import type { ArticleCardProps } from "@/lib/types/article-display";
 import Image from "next/image";
+import Link from "next/link";
 
 function formatLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -174,9 +175,9 @@ export function ArticleCard({
 
   if (href) {
     return (
-      <a href={href} className="block h-full no-underline text-inherit">
+      <Link href={href} className="block h-full no-underline text-inherit">
         {content}
-      </a>
+      </Link>
     );
   }
 

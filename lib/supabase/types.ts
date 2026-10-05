@@ -179,6 +179,22 @@ export type OxylabsScheduleRunInsert = {
 
 export type OxylabsScheduleRunUpdate = Partial<OxylabsScheduleRunInsert>;
 
+export type SavedArticleRow = {
+  id: string;
+  clerk_user_id: string;
+  article_id: string;
+  created_at: string;
+};
+
+export type SavedArticleInsert = {
+  id?: string;
+  clerk_user_id: string;
+  article_id: string;
+  created_at?: string;
+};
+
+export type SavedArticleUpdate = Partial<SavedArticleInsert>;
+
 type Relationship = {
   foreignKeyName: string;
   columns: string[];
@@ -219,6 +235,16 @@ type ArticleAnalysesRelationships = [
   },
 ];
 
+type SavedArticlesRelationships = [
+  {
+    foreignKeyName: "saved_articles_article_id_fkey";
+    columns: ["article_id"];
+    isOneToOne: false;
+    referencedRelation: "articles";
+    referencedColumns: ["id"];
+  },
+];
+
 export type Database = {
   public: {
     Tables: {
@@ -245,6 +271,12 @@ export type Database = {
         OxylabsScheduleRunRow,
         OxylabsScheduleRunInsert,
         OxylabsScheduleRunUpdate
+      >;
+      saved_articles: TableDef<
+        SavedArticleRow,
+        SavedArticleInsert,
+        SavedArticleUpdate,
+        SavedArticlesRelationships
       >;
     };
     Views: Record<string, never>;
@@ -280,6 +312,7 @@ export type ArticleAnalysis = ArticleAnalysisRow;
 export type Log = LogRow;
 export type OxylabsSchedule = OxylabsScheduleRow;
 export type OxylabsScheduleRun = OxylabsScheduleRunRow;
+export type SavedArticle = SavedArticleRow;
 
 export type ArticleWithAnalysis = Article & {
   sources: Source | null;

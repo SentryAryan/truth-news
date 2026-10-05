@@ -306,3 +306,59 @@ export function IconMonitor(props: IconProps) {
     </IconBase>
   );
 }
+
+export function IconBrandX(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 6.5h2.4l3.2 4.2 3.3-4.2H18l-4.6 5.8L18 17.5h-2.4l-3.5-4.5-3.5 4.5H6l4.8-6.1L6 6.5z" />
+    </IconBase>
+  );
+}
+
+export function IconFacebook(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M14 8h-2a2 2 0 0 0-2 2v2H8v3h2v6h3v-6h2.2L16 12h-3v-1.2c0-.4.3-.8.8-.8H16V8z" />
+    </IconBase>
+  );
+}
+
+export function IconWhatsApp(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 18.5 7.2 15A6.5 6.5 0 1 1 9 17.2L6 18.5z" />
+      <path d="M9.2 10.2c.2-.4.4-.4.7-.4h.5c.2 0 .4 0 .5.4.2.5.6 1.4.6 1.5s0 .4-.2.6l-.3.4c-.1.2-.2.3 0 .6.2.3.7 1.1 1.5 1.5.6.3.8.3 1.1.1l.5-.4c.2-.2.4-.1.6-.1.3 0 1.2.6 1.4.7.2.1.3.2.3.4 0 .3-.4 1.3-1.1 1.5-.6.2-1.1.2-1.8-.1a9 9 0 0 1-3.2-2.8 8 8 0 0 1-1.4-2.6c-.2-.6 0-1.1.3-1.5z" />
+    </IconBase>
+  );
+}
+
+export function IconReddit(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="13" r="6" />
+      <circle cx="9.5" cy="12.5" r="0.8" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="12.5" r="0.8" fill="currentColor" stroke="none" />
+      <path d="M9.5 15.2c.8.7 1.6 1 2.5 1s1.7-.3 2.5-1" />
+      <path d="M16.2 8.8 15 5.5" />
+      <circle cx="17.4" cy="5.2" r="1" />
+    </IconBase>
+  );
+}
+
+export function IconTelegram(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m4 11.5 16-6.5-3.8 15.5-4.7-5.2L4 11.5z" />
+      <path d="M11.5 15.3 16.2 5.8" />
+    </IconBase>
+  );
+}
+
+export function IconMail(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </IconBase>
+  );
+}

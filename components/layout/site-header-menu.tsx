@@ -2,10 +2,8 @@
 
 import { HeaderAuthSlot } from "@/components/auth/header-auth-slot";
 import { IconMenu } from "@/components/icons";
+import { SiteNavLinks } from "@/components/layout/site-nav-links";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/cn";
-import { SITE_NAV } from "@/lib/site-nav";
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 type SiteHeaderMenuProps = {
@@ -70,28 +68,7 @@ export function SiteHeaderMenu({
           className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-md border border-border bg-bg-primary py-2 shadow-md"
         >
           <nav className="flex flex-col">
-            {SITE_NAV.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "relative px-4 py-2.5 text-body-md font-medium no-underline",
-                  item.active
-                    ? "bg-surface text-text-primary"
-                    : "text-text-secondary hover:bg-surface hover:text-text-primary",
-                )}
-              >
-                {item.label}
-                {item.dot ? (
-                  <span
-                    className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-bias-left align-middle"
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </Link>
-            ))}
+            <SiteNavLinks variant="menu" onNavigate={() => setOpen(false)} />
           </nav>
 
           <div className="mt-2 flex flex-col gap-2 border-t border-border px-3 pt-3 pb-1">
