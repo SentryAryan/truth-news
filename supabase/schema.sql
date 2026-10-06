@@ -234,6 +234,17 @@ create index if not exists saved_articles_user_created_idx
   on public.saved_articles (clerk_user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- trending_snapshots (singleton cache of PostHog reader ranks; service-role only)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.trending_snapshots (
+  id integer primary key default 1 check (id = 1),
+  article_ids uuid[] not null default '{}',
+  reader_counts jsonb not null default '{}'::jsonb,
+  computed_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- RLS
 -- ---------------------------------------------------------------------------
 
@@ -244,6 +255,7 @@ alter table public.logs enable row level security;
 alter table public.oxylabs_schedules enable row level security;
 alter table public.oxylabs_schedule_runs enable row level security;
 alter table public.saved_articles enable row level security;
+alter table public.trending_snapshots enable row level security;
 
 grant select on public.sources to anon, authenticated;
 grant select on public.articles to anon, authenticated;
@@ -277,7 +289,7 @@ create policy "public can read article analyses"
     )
   );
 
--- logs / oxylabs_* / saved_articles : no public grants or policies (service role bypasses RLS)
+-- logs / oxylabs_* / saved_articles / trending_snapshots : no public grants or policies (service role bypasses RLS)
 
 comment on table public.sources is 'News homepage sources used by the scrape pipeline';
 comment on table public.articles is 'Scraped articles; homepage shows rows with analyzed_at set';
@@ -286,3 +298,4 @@ comment on table public.logs is 'Pipeline run logs; service-role only';
 comment on table public.oxylabs_schedules is 'Oxylabs Scheduler sync state; schedule IDs as text';
 comment on table public.oxylabs_schedule_runs is 'Processed Oxylabs schedule runs';
 comment on table public.saved_articles is 'Articles a Clerk user saved; service-role only';
+comment on table public.trending_snapshots is 'Cached PostHog trending article ids; service-role only';

@@ -77,6 +77,24 @@ export function HomeFeedSkeleton() {
       </div>
 
       <Container className="py-6 sm:py-8">
+        <div
+          className="mb-8 sm:mb-10"
+          aria-label="Loading trending"
+        >
+          <Skeleton className="h-8 w-32 sm:h-9 sm:w-40" />
+          <Skeleton className="mt-2 h-3 w-48" />
+          <div className="mt-4 flex snap-x snap-mandatory gap-4 overflow-hidden sm:gap-6">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div
+                key={i}
+                className="w-[17.5rem] shrink-0 snap-start lg:w-[calc((100%-4.5rem)/4)]"
+              >
+                <ArticleCardSkeleton />
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-4 flex flex-col gap-3 sm:mb-6 sm:gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 space-y-2">

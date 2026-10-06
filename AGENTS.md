@@ -663,6 +663,8 @@ Canonical list lives in `.env.sample`. Only `NEXT_PUBLIC_*` values may reach bro
 | `ANALYSIS_MAX_PER_RUN`                                                        | Optional; max pending articles per `POST /api/analyze` run (default 20)                 | server only     |
 | `CRON_SECRET`                                                                 | Protects `GET /api/cron/pipeline`; injected by Vercel, not in `.env.local` (section 18) | server only     |
 | `SCHEDULED_PIPELINE_ENABLED`                                                  | Optional. Unset or `on` runs daily Oxylabs schedules and the cron pipeline. `off` deactivates those schedules and skips cron scraping and analysis | server only     |
+| `POSTHOG_PERSONAL_API_KEY`                                                    | Personal API key for the PostHog query API that ranks the homepage Trending rail | server only     |
+| `POSTHOG_PROJECT_ID`                                                          | Numeric PostHog project id used with that query API                             | server only     |
 
 Keep this table and `.env.sample` in sync when variables change.
 

@@ -9,6 +9,7 @@ import {
 } from "@/components/home/home-feed-nav";
 import { HomeFeedCardsSkeleton } from "@/components/home/home-feed-skeleton";
 import { HomeFeedToolbar } from "@/components/home/home-feed-toolbar";
+import { TrendingRail } from "@/components/home/trending-rail";
 import type { HomeFeedParams } from "@/lib/home-feed-params";
 import type { HomeFilterSource } from "@/lib/supabase/queries/articles";
 import type { HomeArticle } from "@/lib/types/article-display";
@@ -20,6 +21,7 @@ type HomeFeedViewProps = {
   total: number;
   totalPages: number;
   hasFilters: boolean;
+  trending: HomeArticle[];
 };
 
 function HomeFeedViewInner({
@@ -29,6 +31,7 @@ function HomeFeedViewInner({
   total,
   totalPages,
   hasFilters,
+  trending,
 }: HomeFeedViewProps) {
   const { isPending } = useHomeFeedNav();
 
@@ -37,6 +40,8 @@ function HomeFeedViewInner({
       <CategoryBar sources={sources} params={params} />
 
       <Container className="py-6 sm:py-8">
+        <TrendingRail articles={trending} />
+
         <HomeFeedToolbar
           variant="top"
           params={params}
@@ -82,7 +87,7 @@ function HomeFeedViewInner({
                   framingLabel={article.framingLabel}
                   confidence={article.confidence}
                   href={`/news/${article.id}`}
-                  priorityImage={index === 0}
+                  priorityImage={trending.length === 0 && index === 0}
                 />
               ))}
             </div>

@@ -195,6 +195,22 @@ export type SavedArticleInsert = {
 
 export type SavedArticleUpdate = Partial<SavedArticleInsert>;
 
+export type TrendingSnapshotRow = {
+  id: number;
+  article_ids: string[];
+  reader_counts: unknown;
+  computed_at: string;
+};
+
+export type TrendingSnapshotInsert = {
+  id?: number;
+  article_ids: string[];
+  reader_counts: unknown;
+  computed_at?: string;
+};
+
+export type TrendingSnapshotUpdate = Partial<TrendingSnapshotInsert>;
+
 type Relationship = {
   foreignKeyName: string;
   columns: string[];
@@ -278,6 +294,11 @@ export type Database = {
         SavedArticleUpdate,
         SavedArticlesRelationships
       >;
+      trending_snapshots: TableDef<
+        TrendingSnapshotRow,
+        TrendingSnapshotInsert,
+        TrendingSnapshotUpdate
+      >;
     };
     Views: Record<string, never>;
     Functions: {
@@ -313,6 +334,7 @@ export type Log = LogRow;
 export type OxylabsSchedule = OxylabsScheduleRow;
 export type OxylabsScheduleRun = OxylabsScheduleRunRow;
 export type SavedArticle = SavedArticleRow;
+export type TrendingSnapshotRecord = TrendingSnapshotRow;
 
 export type ArticleWithAnalysis = Article & {
   sources: Source | null;

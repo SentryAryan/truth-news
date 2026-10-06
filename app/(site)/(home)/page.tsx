@@ -7,6 +7,7 @@ import {
     getActiveSourcesForFilter,
     getHomeArticlesPage,
 } from "@/lib/supabase/queries/articles";
+import { getTrendingHomeArticles } from "@/lib/supabase/queries/trending";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,10 @@ type HomePageProps = {
 export default async function HomePage({ searchParams }: HomePageProps) {
   const rawParams = await searchParams;
   const parsed = parseHomeFeedParams(rawParams);
-  const sources = await getActiveSourcesForFilter();
+  const [sources, trending] = await Promise.all([
+    getActiveSourcesForFilter(),
+    getTrendingHomeArticles(),
+  ]);
 
   const source =
     parsed.source && sources.some((s) => s.id === parsed.source)
@@ -38,6 +42,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       total={total}
       totalPages={totalPages}
       hasFilters={hasFilters}
+      trending={trending}
     />
   );
 }
