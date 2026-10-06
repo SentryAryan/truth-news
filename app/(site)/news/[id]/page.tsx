@@ -9,6 +9,12 @@ import { SourceBreakdownCard } from "@/components/details/source-breakdown-card"
 import { IconInfo, IconMore } from "@/components/icons";
 import { NewsletterBanner } from "@/components/newsletter-banner";
 import {
+    articlePageUrl,
+    articleShareDescription,
+    articleShareMetadata,
+} from "@/lib/share/article-metadata";
+import { requestOrigin } from "@/lib/share/request-origin";
+import {
     getArticleEmbedding,
     getArticleWithAnalysis,
     getRelatedArticles,
@@ -28,20 +34,22 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
 }: NewsDetailPageProps): Promise<Metadata> {
-  const { isAuthenticated } = await auth();
-  if (!isAuthenticated) {
-    return { title: "Sign in · truth-news" };
-  }
-
   const { id } = await params;
   const article = await getArticleWithAnalysis(id);
   if (!article) {
     return { title: "Article not found · truth-news" };
   }
-  return {
-    title: `${article.title} · truth-news`,
-    description: article.summary[0] ?? article.title,
-  };
+
+  const description = articleShareDescription(
+    article.summary[0],
+    article.title,
+  );
+  return articleShareMetadata({
+    title: article.title,
+    description,
+    imageUrl: article.imageUrl,
+    pageUrl: articlePageUrl(await requestOrigin(), id),
+  });
 }
 
 export default async function NewsDetailPage({ params }: NewsDetailPageProps) {
